@@ -1,0 +1,116 @@
+* bot database 종류
+	   1. daily_craw : 종목 별 일 별 금융 거래 데이터를 저장하는 데이터 베이스
+	   2. min_craw : 종목 별 분 별 금융 거래 데이터를 저장하는 데이터 베이스
+	   3. daily_buy_list :
+            1) 일자 별로 상장 된 모든 종목들의 금융 데이터를 저장
+            2) 주식 종목 리스트 저장
+            3) 테이블 종류
+                stock_item_all : 코스피, 코스닥, 코넥스 모든 종목 저장하는 테이블
+                stock_kospi : 코스피 종목 리스트
+                stock_kosdaq : 코스닥 종목 리스트
+
+
+        4. jackbot1_imi1 : 모의 투자 테이터베이스
+            1) 테이블 종류
+                all_item_db : 종목 거래 이력
+                jango_data : 일별 수익률 정산 테이블
+                possessed_item : 현재 보유 중인 종목 리스트 테이블
+                setting_data : 봇 옵션 관리 및 DB 업데이트 일자 관리 테이블
+
+
+        5. simulator(알고리즘번호) : 시뮬레이팅 결과 데이터베이스
+            1) 테이블 종류
+                all_item_db : 종목 거래 이력
+                jango_data : 일별 수익률 정산 테이블
+                realtime_daily_buy_list : 매수 할 종목 리스트(시뮬레이팅 과정에서 실시간 업데이트)
+
+            2) 테이블 별 주요 컬럼 설명(테이블 상에 컬럼은 있으나 아래 설명이 되어 있지 않은 컬럼은 실습에 사용하지 않는 컬럼)
+
+                ** 아래 모든 컬럼을 사용할 필요가 없다. 데이터 분석 시 필요한 컬럼만 참고 하면 된다.
+                예시 )  나는 종목명, 현재 수익, 매수 일, 매도 일, 매도 수익률만 확인하고싶다. =>
+                        select code_name, valuation_profit, buy_date, sell_date, sell_rate from all_item_db;
+                [all_item_db]  : 종목 거래 이력
+                    code : 종목코드
+                    code_name : 종목명
+                    rate : 현재 실시간 수익률 (세금, 수수료 반영)
+                    purchase_rate : 매수 한 순간 등락율(전일비), 전일에 비해서 몇 프로가 상승했는지를 의미
+                    purchase_price : 매수한 가격
+                    present_price : 현재가
+                    valuation_price : 평가금액(현재가 X 보유 주식수)
+                                        ex. 1주에 100원인 종목을 10개 샀을 때 : 초기 평가금액 1000원
+                                            -> 100원에 매수한 종목의 주가가 200원으로 되었을 때 평가 금액 : 2000원
+                    valuation_profit : 수익(손실) 금액  (종목의 순수익, 순손실 금액)
+                                        ex. 총 1000원을 투자 했는데 2000원으로 평가금액이 된 경우
+                                            ->  valuation_profit ? => 1000원
+                                        ex. 총 1000원을 투자 했는데 500원으로 평가금액이 된 경우
+                                            ->  valuation_profit ? => -500원
+                    holding_amount : 보유 주식수
+                    buy_date : 매수 시간
+                    item_total_purchase : 매수가 X 보유 주식수
+                    invest_unit : 투자 금액 단위
+                                        ex. 총 투자 금액 100만원 인 경우 10만원 씩 분산 해서 종목에 투자하도록 설정한 경우 invest_unit? => 10만원
+                    sell_date : 매도 시간
+                    sell_price : 매도가
+                    sell_rate : 매도 시 수익률 (세금, 수수료 반영)
+
+                    close : 매수 이전 날의 종가(콜렉터에서 매일 종가로 업데이트)
+                    d1_diff_rate : 전일비(매수 이전 날의 종가 기준, 전날 대비 상승, 하락률)
+                                (콜렉터에서 매일 전일비로 업데이트)
+                            ex. 매수일자 : 1월 3일 9시
+                                매수전날 종가 : 1월 2일 15시 => 400원
+                                매수 이틀 전 종가 : 1월 1일 15시 => 200원
+                                di_diff_rate : (400-200)/200 * 100 = 100% 상승 (2배)
+                    open : 매수 이전 날의 시가(콜렉터에서 매일 시가로 업데이트)
+                    high : 매수 이전 날의 고가(콜렉터에서 매일 당일 고가로 업데이트)
+                    low : 매수 이전 날의 저가(콜렉터에서 매일 당일 저가로 업데이트)
+                    volume : 매수 이전 날의 거래량(콜렉터에서 매일 당일 거래량으로 업데이트)
+                    clo5(10...120) : 매수 이전 날의 5일 이동평균치(콜렉터에서 매일 이동평균치 업데이트)
+                    clo5_diff_rate(10...120) : 매수 이전 날의 5일 이동평균치 대비 종가의 상승, 하락률
+                                               연산방법 -> (close - clo5) / clo5 * 100
+                                               ex) 매수 이전 날 종가 400
+                                                   매수 이전 날 5일 이동평균치 : 200
+                                                   clo5_diff_rate : (400-200)/200 * 100 = 100%
+                                                                       => 5일 이동평균치 보다 100% 종가가 상승 했다.
+
+                [jango_data] : 일별 수익률 정산 테이블
+                     예시 )  나는 정산 일자, 실제 누적 수익만 확인하고싶다. =>
+                            select date, sum_valuation_profit from jango_data;
+
+                    date : 정산 일자
+                    today_earning_rate : 당일 수익률(매도를 한 종목들 대상)
+                    sum_valuation_profit : 실제 수익 (매도를 한 종목들 대상 누적 수익 + 현재 보유 중인 종목들의 수익)
+                    total_profit : 매도를 한 종목들 대상 누적 수익
+                    today_profit : 오늘 일자 수익
+                    today_profitcut_count : 오늘 일자 익절한 종목 수
+                    today_losscut_count : 오늘 일자 손절한 종목 수
+                    today_profitcut : 오늘 일자 익절한 종목의 수익 합산
+                    today_losscut : 오늘 일자 손절한 종목의 손실액 합산
+                    d2_deposit : 현재 투자 가능한 금액(예수금)
+                    total_possess_count : 현재 보유한 종목 수
+                    today_buy_count : 오늘 일자 매수한 종목 수
+                    today_buy_list_count : 오늘 사려고 했던 종목의 리스트(예수금 부족 시 매수 불가)
+                    total_invest : 전재산[투자금액 + 실제 수익(sum_valuation_profit)]
+                    sum_item_total_purchase : 현재 보유 중인 종목의 총 투자 금액
+                    today_invest_price : 오늘 투자한 금액
+                    today_sell_price : 오늘 매도한 금액
+                    sell_point : 매도 포인트(ex. 3% 수익이 나면 익절 매도 하겠다.)
+                    invest_unit : 종목 당 투자 할 금액
+                    limit_money : 최소 보유 할 금액(투자 하지 않고 여분으로 둘 금액)
+                    total_profitcut : 누적 익절 금액
+                    total_losscut : 누적 손절 금액
+                    total_profitcut_count : 누적 익절 종목 수
+                    total_losscut_count : 누적 손절 종목 수
+
+
+
+
+
+* 초기 database 생성 쿼리문 (collector_v3.py를 실행시키면 자동으로 아래 db가 없을 시 생성 되도록 코드가 수정 되었습니다.)
+    create database daily_craw ;
+    create database min_craw ;
+    create database daily_buy_list ;
+
+* 시뮬레이터 리포트 database 생성
+    create database simul_scrap ;
+
+
