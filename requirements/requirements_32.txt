@@ -1,0 +1,9 @@
+lxml
+PyQt5
+pymysql
+selenium
+numpy
+dart_fss
+sqlalchemy
+pandas
+cryptography
