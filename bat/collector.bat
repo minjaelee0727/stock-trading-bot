@@ -18,7 +18,7 @@ goto repeat
 
 :1
 set x=0
-set max=5000
+set max=1500
 
 start python "%~dp0/../collector_v3.py"
 timeout 5 > NUL
