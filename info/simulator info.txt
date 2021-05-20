@@ -1,0 +1,14 @@
+시뮬레이터 변수
+
+1)
+    start date: 20190101
+    buying offer algorithm: 1
+    selling offer algorithm: 1
+    initial investment: 10,000,000
+    buying amount: 1,000,000
+    limit money: 3,000,000
+    sell point: 10%
+    losscut point: -2%
+
+    invest_limit_rate = 1.01%
+    invest_min_limit_rate = 0.98%

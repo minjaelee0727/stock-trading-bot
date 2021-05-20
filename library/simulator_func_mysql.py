@@ -589,6 +589,9 @@ class simulator_func_mysql:
             # 아래 명령을 통해 테이블로 부터 데이터를 가져오면 리스트 형태로 realtime_daily_buy_list 에 담긴다.
             realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
+        elif self.db_to_realtime_daily_buy_list_num == 4:
+            sql = "select * from '" + date_rows_yesterday +"' a where "
+
         ######################################################################################################################################################################################
         else:
             print(f"{self.simul_num}번 알고리즘에 대한 self.db_to_realtime_daily_buy_list_num 설정이 비었습니다. variable_setting 함수에서 self.db_to_realtime_daily_buy_list_num 을 확인해주세요.")
