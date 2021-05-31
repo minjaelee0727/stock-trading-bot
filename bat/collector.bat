@@ -5,7 +5,7 @@ set time_unit=1
 set max=1200
 set target_window="collector"
 set file="%~dp0\..\collector.py"
-set activate_path="C:\Users\minja\anaconda3\Scripts\activate.bat"
+set activate_path="D:\Anaconda\Scripts\activate.bat"
 IF EXIST %activate_path% (
     call %activate_path% py37_32
 ) ELSE (
