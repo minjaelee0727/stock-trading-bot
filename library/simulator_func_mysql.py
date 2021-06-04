@@ -3,9 +3,9 @@ print(f"simulator_func_mysql Version: {ver}")
 import sys
 is_64bits = sys.maxsize > 2**32
 if is_64bits:
-    print('64bit 환경입니다.')
+    print('64bit environment')
 else:
-    print('32bit 환경입니다.')
+    print('32bit environment')
 
 from sqlalchemy import event
 from sqlalchemy.exc import ProgrammingError
@@ -13,7 +13,7 @@ from sqlalchemy.exc import ProgrammingError
 from library.daily_crawler import *
 import pymysql.cursors
 # import numpy as np
-from datetime import timedelta
+import datetime
 from library.logging_pack import *
 from library import cf
 from pandas import DataFrame
@@ -27,7 +27,6 @@ class simulator_func_mysql:
         if self.simul_num == -1:
             self.date_setting()
 
-        # option이 reset일 경우 실행
         elif op == 'reset':
             self.op = 'reset'
             self.simul_reset = True
@@ -78,25 +77,24 @@ class simulator_func_mysql:
 
     # 시뮬레이션 옵션 설정 함수
     def variable_setting(self):
-        # 아래 if문으로 들어가기 전까지의 변수들은 모든 알고리즘에 공통적으로 적용 되는 설정
-        # 오늘 날짜를 설정
+        # Common variables
         self.date_setting()
-        # 시뮬레이팅이 끝나는 날짜.
         self.simul_end_date = self.today
         self.start_min = "0900"
 
-        # 아래 3개는 분별시뮬레이션 옵션
-        # (use_min, only_nine_buy 변수만 각각의 알고리즘에 붙여 넣기 해서 사용)
-        # 분별 시뮬레이션을 사용하고 싶을 경우 아래 옵션을 True로 변경하여 사용
+        self.open_time = "0900"
+
+        # Variables for min based simulations
+        # If you want to simulate based on min data (default: False)
         self.use_min = False
-        # 아침 9시에만 매수를 하고 싶은 경우 True, 9시가 아니어도 매수를 하고 싶은 경우 False(분별 시뮬레이션 적용 가능 / 일별 시뮬레이션은 9시에만 매수, 매도)
-        self.only_nine_buy = True
-        # self.buy_stop옵션은 수정 필요가 없음. self.only_nine_buy 옵션을 True로 하게 되면 시뮬레이터가 9시에 매수 후에 self.buy_stop을 true로 변경해서 당일에는 더이상 매수하지 않도록 설정함
+        # If you want to buy stocks only at open time (default: 9 AM).
+        self.only_buy_at_open = True
+        # Do not change the below variable
         self.buy_stop = False
 
-        # AI알고리즘 사용 여부 (고급 챕터에서 소개)
-        self.use_ai = False  # ai 알고리즘 사용 시 True 사용 안하면 False
-        self.ai_filter_num = 1  # ai 알고리즘 선택
+        # AI setting
+        self.use_ai = False
+        self.ai_filter_num = 1  # ai algorithm
 
         # 실시간 조건 매수 옵션 (고급 챕터에서 소개)
         # self.only_nine_buy 옵션을 반드시 False로 설정해야함
@@ -104,14 +102,13 @@ class simulator_func_mysql:
         # 실시간 조건 매수 알고리즘 선택 (1,2,3..)
         self.trade_check_num = False
 
-        print("self.simul_num!!! ", self.simul_num)
-
-        ###!@####################################################################################################################
-        # 아래 부터는 알고리즘 별로 별도의 설정을 해주는 부분
+        #!@Simulation Setting###########################################################################################
+        print("self.simul_num", self.simul_num)
 
         if self.simul_num == 1:
             # 시뮬레이팅 시작 일자(분 별 시뮬레이션의 경우 최근 1년 치 데이터만 있기 때문에 start_date 조정 필요)
-            self.simul_start_date = "20190101"
+            self.simul_start_date = (self.today_raw - datetime.timedelta(days=365)).strftime("%Y%m%d")
+            print("self.simul_start_date: ", self.simul_start_date)
 
             ######### 알고리즘 선택 #############
             # 매수 리스트 설정 알고리즘 번호
@@ -124,7 +121,7 @@ class simulator_func_mysql:
             # 초기 투자자금(시뮬레이션에서의 초기 투자 금액. 모의투자는 신청 당시의 금액이 초기 투자 금액이라고 보시면 됩니다)
             # 주의! start_invest_price 는 모의투자 초기 자본금과 별개. 시뮬레이션에서만 적용.
             # 키움증권 모의투자의 경우 초기에 모의투자 신청 할 때 설정 한 금액으로 자본금이 설정됨
-            self.start_invest_price = 10000000
+            self.start_invest_price = 100000000
 
             # 매수 금액
             self.invest_unit = 1000000
@@ -143,76 +140,8 @@ class simulator_func_mysql:
             # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 -2% 이하로 떨어진 경우 사지 않도록 하는 설정(변경 가능)
             self.invest_min_limit_rate = 0.98
 
-        elif self.simul_num == 2:
-            # 시뮬레이팅 시작 일자
-            self.simul_start_date = "20190101"
-
-            ######### 알고리즘 선택 #############
-            # 매수 리스트 설정 알고리즘 번호
-            self.db_to_realtime_daily_buy_list_num = 1
-            # 매도 리스트 설정 알고리즘 번호
-            self.sell_list_num = 2
-            ###################################
-            # 초기 투자자금
-            # 주의! start_invest_price 는 모의투자 초기 자본금과 별개. 시뮬레이션에서만 적용.
-            # 키움증권 모의투자의 경우 초기에 모의투자 신청 할 때 설정 한 금액으로 자본금이 설정됨
-            self.start_invest_price = 10000000
-            # 매수 금액
-            self.invest_unit = 1000000
-
-            # 자산 중 최소로 남겨 둘 금액
-            self.limit_money = 1000000
-            # # 익절 수익률 기준치
-            self.sell_point = False
-            # 손절 수익률 기준치
-            self.losscut_point = -2
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 1% 이상 오른 경우 사지 않도록 하는 설정(변경 가능)
-            self.invest_limit_rate = 1.01
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 -2% 이하로 떨어진 경우 사지 않도록 하는 설정(변경 가능)
-            self.invest_min_limit_rate = 0.98
-
-
-        elif self.simul_num == 3:
-
-            # 시뮬레이팅 시작 일자
-
-            self.simul_start_date = "20190101"
-
-            ######### 알고리즘 선택 #############
-
-            # 매수 리스트 설정 알고리즘 번호
-
-            self.db_to_realtime_daily_buy_list_num = 3
-
-            # 매도 리스트 설정 알고리즘 번호
-
-            self.sell_list_num = 2
-
-            ###################################
-
-            # 초기 투자자금
-            # 주의! start_invest_price 는 모의투자 초기 자본금과 별개. 시뮬레이션에서만 적용.
-            # 키움증권 모의투자의 경우 초기에 모의투자 신청 할 때 설정 한 금액으로 자본금이 설정됨
-            self.start_invest_price = 10000000
-
-            # 매수 금액
-            self.invest_unit = 3000000
-
-            # 자산 중 최소로 남겨 둘 금액
-            self.limit_money = 1000000
-
-            # 익절 수익률 기준치
-            self.sell_point = 10
-
-            # 손절 수익률 기준치
-            self.losscut_point = -2
-
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 1% 이상 오른 경우 사지 않도록 하는 설정(변경 가능)
-            self.invest_limit_rate = 1.01
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 -2% 이하로 떨어진 경우 사지 않도록 하는 설정(변경 가능)
-            self.invest_min_limit_rate = 0.98
         else:
-            logger.error(f"입력 하신 {self.simul_num}번 알고리즘에 대한 설정이 없습니다. simulator_func_mysql.py 파일의 variable_setting함수에 알고리즘을 설정해주세요. ")
+            logger.error(f"There is no simulation setting number ({self.simul_num}) that you inserted. \nPlease Check simulator_func_mysql.py")
             sys.exit(1)
 
         #########################################################################################################################
@@ -306,9 +235,10 @@ class simulator_func_mysql:
         else:
             return False
 
-    # 오늘 날짜를 설정하는 함수
+    # set date as today
     def date_setting(self):
-        self.today = datetime.datetime.today().strftime("%Y%m%d")
+        self.today_raw = datetime.datetime.today()
+        self.today = self.today_raw.strftime("%Y%m%d")
         self.today_detail = datetime.datetime.today().strftime("%Y%m%d%H%M")
         self.today_date_form = datetime.datetime.strptime(self.today, "%Y%m%d").date()
 
@@ -422,7 +352,7 @@ class simulator_func_mysql:
                     continue
 
                 # 촬영 후 아래 if 문 추가 (향후 실시간 조건 매수 시 사용) ###################
-                if self.use_min and not self.only_nine_buy and self.trade_check_num :
+                if self.use_min and not self.only_buy_at_open and self.trade_check_num :
                     # 시작가
                     open = self.get_now_open_price_by_date(code, date_rows_today)
                     # 당일 누적 거래량
@@ -1438,7 +1368,7 @@ class simulator_func_mysql:
                         self.auto_trade_stock_realtime(min, date_rows_today, date_rows_yesterday)
 
                 # 9시에만 매수를 하는 경우는 한번만 9시에 매수 하고 self.buy_stop을 true로 변경하여 이후로 매수하지 않도록 설정
-                if not self.buy_stop and self.only_nine_buy:
+                if not self.buy_stop and self.only_buy_at_open:
                     print("9시 매수 끝!!!!!!!!!!")
                     self.buy_stop = True
 

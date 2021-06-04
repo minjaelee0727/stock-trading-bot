@@ -1,14 +1,20 @@
 ver = "#version 0.0.2"
 print(f"demo Version: {ver}")
 
+import logging
+
 import pymysql
 import pandas as pd
 
+import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import LSTM
 
 from ai.SPPModel import load_data, evaluate, DataNotEnough, create_model, predict, plot_graph, train
 from library import cf
+
+# tf setting
+logging.info("GPU: ", tf.config.list_physical_devices('GPU'))
 
 conn = pymysql.connect(host=cf.db_ip,
                        port=int(cf.db_port),
@@ -35,7 +41,7 @@ if not len(df):
 # 하나의 시퀀스에 담을 데이터 수
 N_STEPS = 100
 # 단위 :(일/분) 몇 일(분) 뒤의 종가를 예측 할 것 인지 설정 : daily_craw -> 일 / min_craw -> 분
-LOOKUP_STEP = 30
+LOOKUP_STEP = 1
 #  train 범위 : test_size 가 0.2 이면 X_train, y_train에 80% 데이터로 트레이닝 하고 X_test,y_test에 나머지 20%로 테스트를 하겠다는 의미
 TEST_SIZE = 0.2
 
@@ -59,7 +65,7 @@ OPTIMIZER = "adam"
 BATCH_SIZE = 64
 
 # 학습 횟수
-EPOCHS = 10
+EPOCHS = 100
 
 try:
     # shuffle: split을 해주기 이전에 시퀀스를 섞을건지 여부
@@ -67,6 +73,7 @@ try:
 except DataNotEnough:
     print('데이터가 충분하지 않습니다. ')
     exit(1)
+
 model = create_model(n_steps=N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS, dropout=DROPOUT)
 
 # 학습 시작
