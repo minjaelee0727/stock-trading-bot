@@ -1040,7 +1040,7 @@ class open_api(QAxWidget):
 
             # 만약 sf.only_nine_buy가 False 이면 즉, 한번 매수하고 금일 매수를 중단하는 것이 아니라면, 매도 후에 잔액이 생기면 다시 매수를 시작
             # sf.only_nine_buy가 True이면 1회만 매수, 1회 매수 시 잔액이 부족해지면 바로 매수 중단 
-            if not self.jango_check() and self.sf.only_nine_buy:
+            if not self.jango_check() and self.sf.only_buy_at_open:
                 logger.debug("하나 샀더니 잔고가 부족해진 구간!!!!!")
                 # setting_data에 today_buy_stop을 1 로 설정
                 self.buy_check_stop()
@@ -1105,7 +1105,7 @@ class open_api(QAxWidget):
                 self.trade()
 
         # 모든 매수를 마쳤으면 더이상 매수 하지 않도록 설정하는 함수
-        if self.sf.only_nine_buy:
+        if self.sf.only_buy_at_open:
             self.buy_check_stop()
 
     # openapi 조회 카운트를 체크 하고 cf.max_api_call 횟수 만큼 카운트 되면 봇이 꺼지게 하는 함수
