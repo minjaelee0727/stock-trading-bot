@@ -51,8 +51,8 @@ class simulator_func_mysql:
             print("simul_num or op 어느 것도 만족 하지 못함 simul_num : %s ,op : %s !!", simul_num, op)
 
     # 마지막으로 구동했던 시뮬레이터의 날짜를 가져온다.
-    def get_jango_data_last_date(self):
-        sql = "SELECT date from jango_data order by date desc limit 1"
+    def get_balance_data_last_date(self):
+        sql = "SELECT date from balance_data order by date desc limit 1"
         return self.engine_simulator.execute(sql).fetchall()[0][0]
 
     # 모든 테이블을 삭제 하는 함수
@@ -63,8 +63,8 @@ class simulator_func_mysql:
             self.engine_simulator.execute(sql)
             # 만약 jango data 컬럼을 수정하게 되면 테이블을 삭제하고 다시 생성이 자동으로 되는데 이때 삭제했으면 delete가 안먹힌다. 그래서 확인 후 delete
 
-        if self.is_simul_table_exist(self.db_name, "jango_data"):
-            sql = "drop table jango_data"
+        if self.is_simul_table_exist(self.db_name, "balance_data"):
+            sql = "drop table balance_data"
             self.engine_simulator.execute(sql)
 
         if self.is_simul_table_exist(self.db_name, "realtime_daily_buy_list"):
@@ -108,42 +108,18 @@ class simulator_func_mysql:
 
         ###!@####################################################################################################################
         # 아래 부터는 알고리즘 별로 별도의 설정을 해주는 부분
-
         if self.simul_num == 1:
-            # 시뮬레이팅 시작 일자(분 별 시뮬레이션의 경우 최근 1년 치 데이터만 있기 때문에 start_date 조정 필요)
             self.simul_start_date = "20190101"
-
-            ######### 알고리즘 선택 #############
-            # 매수 리스트 설정 알고리즘 번호
-            self.db_to_realtime_daily_buy_list_num = 1
-
-            # 매도 리스트 설정 알고리즘 번호
-            self.sell_list_num = 1
-            ###################################
-
-            # 초기 투자자금(시뮬레이션에서의 초기 투자 금액. 모의투자는 신청 당시의 금액이 초기 투자 금액이라고 보시면 됩니다)
-            # 주의! start_invest_price 는 모의투자 초기 자본금과 별개. 시뮬레이션에서만 적용.
-            # 키움증권 모의투자의 경우 초기에 모의투자 신청 할 때 설정 한 금액으로 자본금이 설정됨
             self.start_invest_price = 10000000
-
-            # 매수 금액
             self.invest_unit = 1000000
-
-            # 자산 중 최소로 남겨 둘 금액
             self.limit_money = 3000000
-
-            # 익절 수익률 기준치
             self.sell_point = 10
-
-            # 손절 수익률 기준치
             self.losscut_point = -2
-
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 1% 이상 오른 경우 사지 않도록 하는 설정(변경 가능)
             self.invest_limit_rate = 1.01
-            # 실전/모의 봇 돌릴 때 매수하는 순간 종목의 최신 종가 보다 -2% 이하로 떨어진 경우 사지 않도록 하는 설정(변경 가능)
             self.invest_min_limit_rate = 0.98
 
-        if self.simul_num == 1:
+            self.db_to_realtime_daily_buy_list_num = 1
+            self.sell_list_num = 1
 
         else:
             logger.error(f"입력 하신 {self.simul_num}번 알고리즘에 대한 설정이 없습니다. simulator_func_mysql.py 파일의 variable_setting함수에 알고리즘을 설정해주세요. ")
@@ -196,11 +172,11 @@ class simulator_func_mysql:
             # self.simul_reset 이 False이고, 시뮬레이터 데이터베이스와, all_item_db 테이블, jango_table이 존재하는 경우 이어서 시뮬레이터 시작
             if self.is_simul_database_exist() and self.is_simul_table_exist(self.db_name,
                                                                             "all_item_db") and self.is_simul_table_exist(
-                self.db_name, "jango_data"):
+                self.db_name, "balance_data"):
                 self.init_df_jango()
                 self.init_df_all_item()
                 # 마지막으로 구동했던 시뮬레이터의 날짜를 가져온다.
-                self.last_simul_date = self.get_jango_data_last_date()
+                self.last_simul_date = self.get_balance_data_last_date()
                 print("self.last_simul_date: " + str(self.last_simul_date))
             #    초반에 reset 으로 돌다가 멈춰버린 경우 다시 init 해줘야함
             else:
@@ -621,7 +597,7 @@ class simulator_func_mysql:
 
         self.engine_simulator.execute(sql)
 
-    # jango_data 라는 테이블을 만들기 위한 self.jango 데이터프레임을 생성
+    # balance_data 라는 테이블을 만들기 위한 self.jango 데이터프레임을 생성
     def init_df_jango(self):
         jango_temp = {'id': []}
 
@@ -1146,10 +1122,10 @@ class simulator_func_mysql:
         sql = "select count(code) from all_item_db where sell_date != 0 and valuation_profit < '%s' "
         return self.engine_simulator.execute(sql % (0)).fetchall()[0][0]
 
-    # jango_data의 저장 된 일자 반환 함수
-    def get_len_jango_data_date(self):
+    # balance_data의 저장 된 일자 반환 함수
+    def get_len_balance_data_date(self):
 
-        sql = "select date from jango_data"
+        sql = "select date from balance_data"
         rows = self.engine_simulator.execute(sql).fetchall()
 
         return len(rows)
@@ -1160,7 +1136,7 @@ class simulator_func_mysql:
         sql = "select count(code) from all_item_db where sell_date = '%s'"
         return self.engine_simulator.execute(sql % (0)).fetchall()[0][0]
 
-    # jango_data 테이블을 만드는 함수
+    # balance_data 테이블을 만드는 함수
     def db_to_jango(self, date_rows_today):
         # 정산 함수
         self.check_balance()
@@ -1268,60 +1244,60 @@ class simulator_func_mysql:
         # 'fail'은 데이터베이스에 테이블이 있다면 아무 동작도 수행하지 않는다.
         # 'replace'는 테이블이 존재하면 기존 테이블을 삭제하고 새로 테이블을 생성한 후 데이터를 삽입한다.
         # 'append'는 테이블이 존재하면 데이터만을 추가한다.
-        self.jango.to_sql('jango_data', self.engine_simulator, if_exists='append')
+        self.jango.to_sql('balance_data', self.engine_simulator, if_exists='append')
 
         #     # today_earning_rate
-        sql = "update jango_data set today_earning_rate =round(today_profit / total_invest * '%s',2) WHERE date='%s'"
+        sql = "update balance_data set today_earning_rate =round(today_profit / total_invest * '%s',2) WHERE date='%s'"
         # rows[i][0] 하는 이유는 rows[i]는 튜플( )로 나온다 그 튜플의 원소를 꺼내기 위해 rows[i]에 [0]을 추가
         self.engine_simulator.execute(sql % (100, date_rows_today))
 
-    # 시뮬레이션이 다 끝났을 때 마지막 jango_data 정리
-    def arrange_jango_data(self):
-        if self.engine_simulator.dialect.has_table(self.engine_simulator, 'jango_data'):
-            len_date = self.get_len_jango_data_date()
-            sql = "select date from jango_data"
+    # 시뮬레이션이 다 끝났을 때 마지막 balance_data 정리
+    def arrange_balance_data(self) -> object:
+        if self.engine_simulator.dialect.has_table(self.engine_simulator, 'balance_data'):
+            len_date = self.get_len_balance_data_date()
+            sql = "select date from balance_data"
             rows = self.engine_simulator.execute(sql).fetchall()
 
-            print('jango_data 최종 정산 중...')
+            print('balance_data 최종 정산 중...')
             # 위에 전체
             for i in range(len_date):
                 # today_buy_count
-                sql = "UPDATE jango_data SET today_buy_count=(select count(*) from (select code from all_item_db where buy_date like '%s') b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_count=(select count(*) from (select code from all_item_db where buy_date like '%s') b) WHERE date='%s'"
                 # date 하는 이유는 rows[i]는 튜플로 나온다 그 튜플의 원소를 꺼내기 위해 [0]을 추가
                 self.engine_simulator.execute(sql % ("%%" + str(rows[i][0]) + "%%", rows[i][0]))
 
                 # today_buy_total_sell_count ( 익절, 손절 포함)
-                sql = "UPDATE jango_data SET today_buy_total_sell_count=(select count(*) from (select code from all_item_db a where buy_date like '%s' and (a.sell_date != 0) group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_total_sell_count=(select count(*) from (select code from all_item_db a where buy_date like '%s' and (a.sell_date != 0) group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", rows[i][0]))
 
                 # today_buy_total_possess_count 오늘 사고 계속 가지고 있는것들
-                sql = "UPDATE jango_data SET today_buy_total_possess_count=(select count(*) from (select code from all_item_db a where buy_date like '%s' and a.sell_date = '%s' group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_total_possess_count=(select count(*) from (select code from all_item_db a where buy_date like '%s' and a.sell_date = '%s' group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", 0, rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_today_profitcut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_date like '%s' and (sell_rate >= '%s' ) group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_today_profitcut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_date like '%s' and (sell_rate >= '%s' ) group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", "%%" + rows[i][0] + "%%", 0, rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_today_profitcut_rate= round(today_buy_today_profitcut_count /today_buy_count *100,2) WHERE date = '%s'"
+                sql = "UPDATE balance_data SET today_buy_today_profitcut_rate= round(today_buy_today_profitcut_count /today_buy_count *100,2) WHERE date = '%s'"
                 self.engine_simulator.execute(sql % (rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_today_losscut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_date like '%s' and sell_rate < '%s'  group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_today_losscut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_date like '%s' and sell_rate < '%s'  group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", "%%" + rows[i][0] + "%%", 0, rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_today_losscut_rate=round(today_buy_today_losscut_count /today_buy_count *100,2) WHERE date = '%s'"
+                sql = "UPDATE balance_data SET today_buy_today_losscut_rate=round(today_buy_today_losscut_count /today_buy_count *100,2) WHERE date = '%s'"
                 self.engine_simulator.execute(sql % (rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_total_profitcut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_rate >= '%s'  group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_total_profitcut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_rate >= '%s'  group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", 0, rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_total_profitcut_rate=round(today_buy_total_profitcut_count /today_buy_count *100,2) WHERE date = '%s'"
+                sql = "UPDATE balance_data SET today_buy_total_profitcut_rate=round(today_buy_total_profitcut_count /today_buy_count *100,2) WHERE date = '%s'"
                 self.engine_simulator.execute(sql % (rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_total_losscut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_rate < '%s'  group by code ) b) WHERE date='%s'"
+                sql = "UPDATE balance_data SET today_buy_total_losscut_count=(select count(*) from (select code from all_item_db where buy_date like '%s' and sell_rate < '%s'  group by code ) b) WHERE date='%s'"
                 self.engine_simulator.execute(sql % ("%%" + rows[i][0] + "%%", 0, rows[i][0]))
 
-                sql = "UPDATE jango_data SET today_buy_total_losscut_rate=round(today_buy_total_losscut_count/today_buy_count*100,2) WHERE date = '%s'"
+                sql = "UPDATE balance_data SET today_buy_total_losscut_rate=round(today_buy_total_losscut_count/today_buy_count*100,2) WHERE date = '%s'"
                 self.engine_simulator.execute(sql % (rows[i][0]))
-        print('jango_data 최종 정산 완료')
+        print('balance_data 최종 정산 완료')
 
     # 분 데이터를 가져오는 함수
     def get_date_min_for_simul(self, simul_start_date):
@@ -1477,8 +1453,8 @@ class simulator_func_mysql:
             else:
                 self.simul_by_date(date_rows_today, date_rows_yesterday, i)
 
-        # 마지막 jango_data 정리
-        self.arrange_jango_data()
+        # 마지막 balance_data 정리
+        self.arrange_balance_data()
 
 
 if __name__ == '__main__':
