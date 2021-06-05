@@ -14,6 +14,9 @@ def BBands(df_close, w=20, m=2):
         3. perb - %b: close position in the BBands
         4. bw - Band Width
     """
+    """         0
+    df_close: 1 x
+    """
     print(df_close)
     df_close = df_close.astype(int)
     std = df_close[:w].std()[0]

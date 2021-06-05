@@ -18,6 +18,7 @@ from library.logging_pack import *
 from library import cf
 from pandas import DataFrame
 
+import library.trading_algorithms as ta
 
 class simulator_func_mysql:
     def __init__(self, simul_num, reset, simulation, db_name):
@@ -179,11 +180,11 @@ class simulator_func_mysql:
             if i > ma_period:
                 sql = f"""
                        SELECT *
-                       FROM '{date_rows_yesterday}' a
+                       FROM `{date_rows_yesterday}` a
                        WHERE NOT exists (SELECT null FROM stock_konex b WHERE a.code = b.code)
-                       AND volume != 0
-                       AND close < '{self.invest_unit}'
-                       ORDER BY volume * close DESC limit 100
+                       AND a.volume != 0
+                       AND a.close < '{self.invest_unit}'
+                       ORDER BY a.volume * a.close DESC limit 100
                    """
                 realtime_daily_buy_list_temp = self.engine_daily_buy_list.execute(sql).fetchall()
 
@@ -191,7 +192,7 @@ class simulator_func_mysql:
                     code_name = item.code_name
                     bb_sql = f"""
                            SELECT (close + high + low)/3
-                           FROM '{code_name}'
+                           FROM `{code_name}`
                            WHERE date <= '{date_rows_yesterday}'
                            ORDER BY date DESC limit {ma_period}
                        """
@@ -199,14 +200,12 @@ class simulator_func_mysql:
                     df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
 
                     if len(df_close) >= ma_period:
-                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+                        result = ta.BBands(pd.DataFrame(df_close), w=ma_period)
                         if result:
                             mbb, ubb, lbb, perb, bw = result
 
                             if perb < 0:
                                 realtime_daily_buy_list.append(item)
-
-            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
         ######################################################################################################################################################################################
         else:
@@ -332,14 +331,14 @@ class simulator_func_mysql:
 
                     bb_sql = f"""
                            SELECT close
-                           FROM '{code_name}'
+                           FROM `{code_name}`
                            WHERE date <= '{date_rows_yesterday}'
                            ORDER By date DESC limit {ma_period}
                        """
                     df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
 
                     if len(df_close) >= ma_period:
-                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+                        result = ta.BBands(pd.DataFrame(df_close), w=ma_period)
 
                         if result:
                             mbb, ubb, lbb, perb, bw = result
