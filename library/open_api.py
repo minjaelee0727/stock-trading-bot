@@ -72,16 +72,16 @@ class open_api(QAxWidget):
 
         # open_api가 호출 되는 경우 (콜렉터, 모의투자, 실전투자) 의 경우는
         # 아래 simulator_func_mysql 클래스를 호출 할 때 두번째 인자에 real을 보낸다.
-        self.sf = simulator_func_mysql(self.simul_num, 'real', self.db_name)
-        logger.debug("self.sf.simul_num(알고리즘 번호) : %s", self.sf.simul_num)
-        logger.debug("self.sf.db_to_realtime_daily_buy_list_num : %s", self.sf.db_to_realtime_daily_buy_list_num)
-        logger.debug("self.sf.sell_list_num : %s", self.sf.sell_list_num)
+        self.sf = simulator_func_mysql(self.simul_num, False, False, self.db_name)
+        logger.info("self.sf.simul_num: %s", self.sf.simul_num)
+        logger.info("self.sf.db_to_realtime_daily_buy_list_num : %s", self.sf.db_to_realtime_daily_buy_list_num)
+        logger.info("self.sf.sell_list_num : %s", self.sf.sell_list_num)
 
         # 만약에 setting_data 테이블이 존재하지 않으면 구축 하는 로직
         if not self.sf.is_simul_table_exist(self.db_name, "setting_data"):
             self.init_db_setting_data()
         else:
-            logger.debug("setting_data db 존재한다!!!")
+            logger.info("setting_data db exist")
 
         # 여기서 invest_unit 설정함
         self.sf_variable_setting()
@@ -94,7 +94,7 @@ class open_api(QAxWidget):
 
     # invest_unit을 가져오는 함수
     def get_invest_unit(self):
-        logger.debug("get_invest_unit 함수에 들어왔습니다!")
+        logger.info("Current position: get_invest_unit")
         sql = "select invest_unit from setting_data limit 1"
         # 데이타 Fetch
         # rows 는 list안에 튜플이 있는 [()] 형태로 받아온다
@@ -105,9 +105,9 @@ class open_api(QAxWidget):
         self.date_rows_yesterday = self.sf.get_recent_daily_buy_list_date()
 
         if not self.sf.is_simul_table_exist(self.db_name, "all_item_db"):
-            logger.debug("all_item_db 없어서 생성!! init !! ")
+            logger.info("Created all_item_db as it does not exist")
             self.invest_unit = 0
-            self.db_to_all_item(0, 0, 0, 0, 0)
+            self.db_to_transaction(0, 0, 0, 0, 0)
             self.delete_all_item("0")
 
         # setting_data에 invest_unit값이 설정 되어 있는지 확인
@@ -122,13 +122,13 @@ class open_api(QAxWidget):
 
     # 보유량 가져오는 함수
     def get_holding_amount(self, code):
-        logger.debug("get_holding_amount 함수에 들어왔습니다!")
+        logger.info("Current position: get_holding_amount")
         sql = "select holding_amount from possessed_item where code = '%s' group by code"
         rows = self.engine_JB.execute(sql % (code)).fetchall()
         if len(rows):
             return rows[0][0]
         else:
-            logger.debug("get_holding_amount 비어있다 !")
+            logger.debug("There is no data in get_holding_amount")
             return False
 
     # setting_data에 invest_unit값이 설정 되어 있는지 확인 하는 함수
@@ -155,27 +155,28 @@ class open_api(QAxWidget):
 
     # 변수 설정 함수
     def variable_setting(self):
-        logger.debug("variable_setting 함수에 들어왔다.")
+        logger.info("Current position: variable_setting")
         self.get_today_buy_list_code = 0
         self.cf = cf
         self.reset_opw00018_output()
         # 아래 분기문은 실전 투자 인지, 모의 투자 인지 결정
         if self.account_number == cf.real_account:  # 실전
             self.simul_num = cf.real_simul_num
-            logger.debug("실전!@@@@@@@@@@@" + cf.real_account)
+            logger.info("Actual Account" + cf.real_account)
             self.db_name_setting(cf.real_db_name)
             # 실전과 모의투자가 다른 것은 아래 mod_gubun 이 다르다.
             # 금일 수익률 표시 하는게 달라서(중요X)
             self.mod_gubun = 100
 
         elif self.account_number == cf.imi1_accout:  # 모의1
-            logger.debug("모의투자 1!!")
+            logger.info("Simulation")
             self.simul_num = cf.imi1_simul_num
             self.db_name_setting(cf.imi1_db_name)
             self.mod_gubun = 1
 
         else:
-            logger.debug("계정이 존재하지 않습니다!! library/cf.py 파일에 계좌번호를 입력해주세요!")
+            logger.info("There is no account")
+            logger.info("Put account number on library/cf.py")
             exit(1)
         # 여기에 이렇게 true로 고정해놔야 exit check 할때 false 인 경우에 들어갔을 때  today_buy_code is null 이런 에러 안생긴다.
         self.jango_is_null = True
@@ -185,7 +186,8 @@ class open_api(QAxWidget):
 
     # 봇 데이터 베이스를 만드는 함수
     def create_database(self, cursor):
-        logger.debug("create_database!!! {}".format(self.db_name))
+        logger.info("Current position: create_database")
+        logger.info("db_name: {}".format(self.db_name))
         sql = 'CREATE DATABASE {}'
         cursor.execute(sql.format(self.db_name))
 
@@ -193,16 +195,17 @@ class open_api(QAxWidget):
     def is_database_exist(self, cursor):
         sql = "SELECT 1 FROM Information_schema.SCHEMATA WHERE SCHEMA_NAME = '{}'"
         if cursor.execute(sql.format(self.db_name)):
-            logger.debug("%s 데이터 베이스가 존재한다! ", self.db_name)
+            logger.info("%s db exist", self.db_name)
             return True
         else:
-            logger.debug("%s 데이터 베이스가 존재하지 않는다! ", self.db_name)
+            logger.info("%s db does not exist", self.db_name)
             return False
 
     # db 세팅 함수
     def db_name_setting(self, db_name):
         self.db_name = db_name
-        logger.debug("db name !!! : %s", self.db_name)
+        logger.info("Current position: db_name_setting")
+        logger.info("db_name: %s", self.db_name)
         conn = pymysql.connect(
             host=cf.db_ip,
             port=int(cf.db_port),
@@ -239,14 +242,14 @@ class open_api(QAxWidget):
 
     # 계좌 정보 함수
     def account_info(self):
-        logger.debug("account_info 함수에 들어왔습니다!")
+        logger.info("Current position: account_info")
         account_number = self.get_login_info("ACCNO")
         self.account_number = account_number.split(';')[0]
-        logger.debug("계좌번호 : " + self.account_number)
+        logger.info("Account Number : " + self.account_number)
 
     # OpenAPI+에서 계좌 정보 및 로그인 사용자 정보를 얻어오는 메서드는 GetLoginInfo입니다.
     def get_login_info(self, tag):
-        logger.debug("get_login_info 함수에 들어왔습니다!")
+        logger.info("Current position: get_login_info")
         try:
             ret = self.dynamicCall("GetLoginInfo(QString)", tag)
             # logger.debug(ret)
@@ -285,7 +288,7 @@ class open_api(QAxWidget):
             logger.critical(e)
 
     def _receive_msg(self, sScrNo, sRQName, sTrCode, sMsg):
-        logger.debug("_receive_msg 함수에 들어왔습니다!")
+        logger.info("Current position: _receive_msg")
         # logger.debug("sScrNo!!!")
         # logger.debug(sScrNo)
         # logger.debug("sRQName!!!")
@@ -298,7 +301,7 @@ class open_api(QAxWidget):
     def _event_connect(self, err_code):
         try:
             if err_code == 0:
-                logger.debug("connected")
+                logger.info("connected")
             else:
                 logger.debug("disconnected")
 
@@ -443,7 +446,7 @@ class open_api(QAxWidget):
         df_setting_data.to_sql('setting_data', self.engine_JB, if_exists='replace')
 
     # all_item_db에 추가하는 함수
-    def db_to_all_item(self, order_num, code, chegyul_check, purchase_price, rate):
+    def db_to_transaction(self, order_num, code, chegyul_check, purchase_price, rate):
         logger.debug("db_to_transaction 함수에 들어왔다!!!")
         self.date_setting()
         self.sf.init_df_transaction()
@@ -523,8 +526,7 @@ class open_api(QAxWidget):
         })
 
     def check_balance(self):
-
-        logger.debug("check_balance 함수에 들어왔습니다!")
+        logger.info("Current position: check_balance")
         # 1차원 / 2차원 인스턴스 변수 생성
         self.reset_opw00018_output()
 
@@ -564,7 +566,7 @@ class open_api(QAxWidget):
 
     # 실제로 키움증권에서 보유한 종목들의 리스트를 가져오는 함수
     def db_to_possesed_item(self):
-        logger.debug("db_to_possesed_item 함수에 들어왔습니다!")
+        logger.info("Current position: db_to_possesed_item")
         item_count = len(self.opw00018_output['multi'])
         possesed_item_temp = {'date': [], 'code': [], 'code_name': [], 'holding_amount': [], 'puchase_price': [],
                               'present_price': [], 'valuation_profit': [], 'rate': [], 'item_total_purchase': []}
@@ -649,7 +651,7 @@ class open_api(QAxWidget):
     # code: 종목코드(ex. '005930' )
     # date : 기준일자. (ex. '20200424') => 20200424 일자 까지의 모든 open, high, low, close, volume 데이터 출력
     def get_total_data(self, code, code_name, date):
-        logger.debug("get_total_data 함수에 들어왔다!")
+        logger.debug("Current position: get_total_data")
 
         self.ohlcv = defaultdict(list)
         self.set_input_value("종목코드", code)
@@ -689,7 +691,7 @@ class open_api(QAxWidget):
         if rows:
             return True
         else:
-            logger.debug(str(code_name) + " 테이블이 daily_craw db 에 없다. 새로 생성! ", )
+            logger.info(f"There is no table, {str(code_name)}, in daily_craw db")
             return False
 
     def is_min_craw_table_exist(self, code_name):
@@ -699,7 +701,7 @@ class open_api(QAxWidget):
         if rows:
             return True
         else:
-            logger.debug(str(code_name) + " min_craw db에 없다 새로 생성! ", )
+            logger.info(f"There is no table, {str(code_name)}, in min_craw db")
             return False
 
     # min_craw 테이블에서 마지막 콜렉팅한 row의 sum_volume을 가져오는 함수
@@ -1191,12 +1193,12 @@ class open_api(QAxWidget):
                 else:
                     chegyul_check = 1
             elif self._data['주문구분'] == '':
-                self.db_to_all_item(self.today, r.code, 0, 0, r.rate)
+                self.db_to_transaction(self.today, r.code, 0, 0, r.rate)
                 continue
             else:
                 continue
 
-            self.db_to_all_item(self._data['주문번호'], r.code, chegyul_check, self._data['체결가'], r.rate)
+            self.db_to_transaction(self._data['주문번호'], r.code, chegyul_check, self._data['체결가'], r.rate)
 
     # 체결이 됐는지 안됐는지 확인한다.
     # 매수 했을 경우 possessd_item 테이블에는 있는데, all_item_db에 없는 경우가 있다.
@@ -1378,10 +1380,10 @@ class open_api(QAxWidget):
                         logger.debug("all_item_db에 매수한 종목이 없음 ! 즉 신규 매수하는 종목이다!!!!")
                         if chegyul_fail_amount_temp == "0":
                             logger.debug("완벽히 싹 다 체결됨!!!!!!!!!!!!!!!!!!!!!!!!!")
-                            self.db_to_all_item(order_num, code, 0, purchase_price, 0)
+                            self.db_to_transaction(order_num, code, 0, purchase_price, 0)
                         else:
                             logger.debug("체결 되었지만 덜 체결 됨!!!!!!!!!!!!!!!!!!")
-                            self.db_to_all_item(order_num, code, 1, purchase_price, 0)
+                            self.db_to_transaction(order_num, code, 1, purchase_price, 0)
 
                     elif order_gubun == "+매수":
                         if chegyul_fail_amount_temp != "0" and self.stock_chegyul_check(code) == True:

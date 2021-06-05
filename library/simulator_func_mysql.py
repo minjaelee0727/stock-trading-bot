@@ -53,7 +53,7 @@ class simulator_func_mysql:
 
     # 모든 테이블을 삭제 하는 함수
     def delete_table_data(self):
-        logger.info('delete_table_data !!!!')
+        logger.info('Current position: delete_table_data')
         if self.is_simul_table_exist(self.db_name, "transaction"):
             sql = "drop table transaction"
             self.engine_simulator.execute(sql)
