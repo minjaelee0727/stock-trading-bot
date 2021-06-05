@@ -3,9 +3,9 @@ print(f"simulator_func_mysql Version: {ver}")
 import sys
 is_64bits = sys.maxsize > 2**32
 if is_64bits:
-    print('64bit 환경입니다.')
+    print('64bit environment')
 else:
-    print('32bit 환경입니다.')
+    print('32bit environment.')
 
 from sqlalchemy import event
 from sqlalchemy.exc import ProgrammingError
@@ -20,35 +20,31 @@ from pandas import DataFrame
 
 
 class simulator_func_mysql:
-    def __init__(self, simul_num, op, db_name):
+    def __init__(self, simul_num, reset, simulation, db_name):
+
         self.simul_num = int(simul_num)
 
         # scraper할 때 start date 가져오기 위해서
         if self.simul_num == -1:
             self.date_setting()
 
-        # option이 reset일 경우 실행
-        elif op == 'reset':
-            self.op = 'reset'
-            self.simul_reset = True
+        elif simulation:
+            self.simulator = True
+
+            if reset:
+                self.simul_reset = True
+
+            else:
+                self.simul_reset = False
+
             self.variable_setting()
             self.rotate_date()
 
-        # option이 real일 경우 실행(시뮬레이터와 무관)
-        elif op == 'real':
-            self.op = 'real'
+        else:
+            self.simulator = False
             self.simul_reset = False
             self.db_name = db_name
             self.variable_setting()
-
-        #  option이 continue 일 경우 실행
-        elif op == 'continue':
-            self.op = 'continue'
-            self.simul_reset = False
-            self.variable_setting()
-            self.rotate_date()
-        else:
-            print("simul_num or op 어느 것도 만족 하지 못함 simul_num : %s ,op : %s !!", simul_num, op)
 
     # 마지막으로 구동했던 시뮬레이터의 날짜를 가져온다.
     def get_balance_last_date(self):
@@ -128,7 +124,7 @@ class simulator_func_mysql:
         #########################################################################################################################
         self.db_name_setting()
 
-        if self.op != 'real':
+        if self.simulator:
             # database, table 초기화 함수
             self.table_setting()
 
@@ -160,27 +156,27 @@ class simulator_func_mysql:
             # 시뮬레이터를 멈춘 지점 부터 다시 돌리기 위해 사용하는 변수(중요X)
             self.simul_reset_lock = False
 
-    # 데이터베이스와 테이블을 세팅하기 위한 함수
+    # Set db and table
     def table_setting(self):
-        print("self.simul_reset" + str(self.simul_reset))
-        # 시뮬레이터를 초기화 하고 처음부터 구축하기 위한 로직
+        print("self.simul_reset: ", str(self.simul_reset))
+
         if self.simul_reset:
-            print("table reset setting !!! ")
+            print("reset the table")
             self.init_database()
-        # 시뮬레이터를 초기화 하지 않고 마지막으로 끝난 시점 부터 구동하기 위한 로직
+
         else:
-            # self.simul_reset 이 False이고, 시뮬레이터 데이터베이스와, transaction 테이블, jango_table이 존재하는 경우 이어서 시뮬레이터 시작
-            if self.is_simul_database_exist() and self.is_simul_table_exist(self.db_name,
-                                                                            "transaction") and self.is_simul_table_exist(
-                self.db_name, "balance"):
-                self.init_df_jango()
-                self.init_df_all_item()
+            if self.is_simul_database_exist() and \
+                    self.is_simul_table_exist(self.db_name, "transaction") and \
+                    self.is_simul_table_exist(self.db_name, "balance"):
+
+                self.init_df_balance()
+                self.init_df_transaction()
                 # 마지막으로 구동했던 시뮬레이터의 날짜를 가져온다.
                 self.last_simul_date = self.get_balance_last_date()
                 print("self.last_simul_date: " + str(self.last_simul_date))
             #    초반에 reset 으로 돌다가 멈춰버린 경우 다시 init 해줘야함
             else:
-                print("초반에 reset 으로 돌다가 멈춰버린 경우 다시 init 해줘야함 ! ")
+                print("You should init db for error during reset")
                 self.init_database()
                 self.simul_reset = True
 
@@ -188,8 +184,8 @@ class simulator_func_mysql:
     def init_database(self):
         self.drop_database()
         self.create_database()
-        self.init_df_jango()
-        self.init_df_all_item()
+        self.init_df_balance()
+        self.init_df_transaction()
 
     # 데이터베이스를 생성하는 함수
     def create_database(self):
@@ -224,18 +220,18 @@ class simulator_func_mysql:
 
     # DB 이름 세팅 함수
     def db_name_setting(self):
-        if self.op == "real":
-            self.engine_simulator = create_engine(
-                "mysql+mysqldb://" + cf.db_id + ":" + cf.db_passwd + "@" + cf.db_ip + ":" + cf.db_port + "/" + str(
-                    self.db_name),
-                encoding='utf-8')
-
-        else:
+        if self.simulator:
             # db_name을 setting 한다.
             self.db_name = "simulator" + str(self.simul_num)
             self.engine_simulator = create_engine(
                 "mysql+mysqldb://" + cf.db_id + ":" + cf.db_passwd + "@" + cf.db_ip + ":" + cf.db_port + "/" + str(
                     self.db_name), encoding='utf-8')
+
+        else:
+            self.engine_simulator = create_engine(
+                "mysql+mysqldb://" + cf.db_id + ":" + cf.db_passwd + "@" + cf.db_ip + ":" + cf.db_port + "/" + str(
+                    self.db_name),
+                encoding='utf-8')
 
         self.engine_daily_craw = create_engine(
             "mysql+mysqldb://" + cf.db_id + ":" + cf.db_passwd + "@" + cf.db_ip + ":" + cf.db_port + "/daily_craw",
@@ -263,13 +259,13 @@ class simulator_func_mysql:
         # print("invest_send_order!!!")
         # 시작가가 투자하려는 금액 보다 작아야 매수가 가능하기 때문에 아래 조건
         if price < self.invest_unit:
-            print(code_name, " 매수!!!!!!!!!!!!!!!")
+            print(code_name, "Buy")
 
             # 매수를 하게 되면 transaction 테이블에 반영을 한다.
-            self.db_to_all_item(date, self.df_realtime_daily_buy_list, j,
-                                code,
-                                code_name, price,
-                                yes_close)
+            self.db_to_transaction(date, self.df_realtime_daily_buy_list, j,
+                                   code,
+                                   code_name, price,
+                                   yes_close)
 
             # 매수를 성공적으로 했으면 realtime_daily_buy_list 테이블의 check_item 에 매수 시간을 설정
             self.update_realtime_daily_buy_list(code, date)
@@ -279,7 +275,6 @@ class simulator_func_mysql:
 
     # code명으로 code_name을 가져오는 함수
     def get_name_by_code(self, code):
-
         sql = "select code_name from stock_item_all where code = '%s'"
         code_name = self.engine_daily_buy_list.execute(sql % (code)).fetchall()
         print(code_name)
@@ -290,10 +285,12 @@ class simulator_func_mysql:
 
     # 실제 매수하는 함수
     def auto_trade_stock_realtime(self, min_date, date_rows_today, date_rows_yesterday):
-        print("auto_trade_stock_realtime 함수에 들어왔다!!")
+        logger.info("Current position: auto_trade_stock_realtime")
+        logger.info(f"min_date: {min_date}, date_rows_today: {date_rows_today}, date_rows_yesterday: {date_rows_yesterday}")
+
         # self.df_realtime_daily_buy_list 에 있는 모든 종목들을 매수한다
         for j in range(self.len_df_realtime_daily_buy_list):
-            if self.jango_check():
+            if self.balance_check():
 
                 # 종목 코드를 가져온다.
                 code = str(self.df_realtime_daily_buy_list.loc[j, 'code']).rjust(6, "0")
@@ -353,7 +350,8 @@ class simulator_func_mysql:
 
     # 최근 daily_buy_list의 날짜 테이블에서 code에 해당 하는 row만 가져오는 함수
     def get_daily_buy_list_by_code(self, code, date):
-        # print("get_daily_buy_list_by_code 함수에 들어왔습니다!")
+        logger.info("get_daily_buy_list_by_code")
+        logger.info(f"code: {code}, date: {date}")
 
         sql = "select * from `" + date + "` where code = '%s' group by code"
 
@@ -380,7 +378,7 @@ class simulator_func_mysql:
 
     # realtime_daily_buy_list 테이블의 매수 리스트를 가져오는 함수
     def get_realtime_daily_buy_list(self):
-        print("get_realtime_daily_buy_list 함수에 들어왔습니다!")
+        logger.info("get_realtime_daily_buy_list")
 
         # 이 부분은 촬영 후 코드를 간소화 했습니다. 조건문 모두 없앴습니다.
         # check_item = 매수 했을 시 날짜가 찍혀 있다. 매수 하지 않았을 때는 0
@@ -466,7 +464,8 @@ class simulator_func_mysql:
                 return False
 
         else:
-            logger.debug("trade_check 함수에 self.trade_check_num = {} 에 맞는 알고리즘이 없습니다. ".format(self.trade_check_num))
+            print("There is no matched algorithm number (self.trade_check_num = {}) in trade_check".format(self.trade_check_num))
+            logger.info("exit(1) by no matched number with self.trade_check_num, {}".format(self.trade_check_num))
             exit(1)
 
     # 여기서 sql문의 date는 반드시 어제 일자여야 한다. -> 어제 일자 기준 반영된 데이터로 종목을 선정해야함.
@@ -499,13 +498,12 @@ class simulator_func_mysql:
             # 아래 명령을 통해 테이블로 부터 데이터를 가져오면 리스트 형태로 realtime_daily_buy_list 에 담긴다.
             realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
-        elif self.db_to_realtime_daily_buy_list_num == 4:
-            sql = "select * from '" + date_rows_yesterday +"' a where "
-
         ######################################################################################################################################################################################
         else:
-            print(f"{self.simul_num}번 알고리즘에 대한 self.db_to_realtime_daily_buy_list_num 설정이 비었습니다. variable_setting 함수에서 self.db_to_realtime_daily_buy_list_num 을 확인해주세요.")
+            print(f"There is no simulator: {self.simul_num}")
+            logger.info("sys.exit(1) by no matched simulator number")
             sys.exit(1)
+
         # realtime_daily_buy_list 에 종목이 하나라도 있다면, 즉 매수할 종목이 하나라도 있다면 아래 로직을 들어간다.
         if len(realtime_daily_buy_list) > 0:
             # realtime_daily_buy_list 라는 리스트를 df_realtime_daily_buy_list 라는 데이터프레임으로 변환하는 과정
@@ -531,8 +529,7 @@ class simulator_func_mysql:
             df_realtime_daily_buy_list['code'] = df_realtime_daily_buy_list['code'].apply(
                 lambda x: "{:0>6d}".format(int(x)))
 
-            # 시뮬레이터의 경우
-            if self.op != 'real':
+            if self.simulator:
                 df_realtime_daily_buy_list['check_item'] = int(0)
                 # [to_sql]
                 # df_realtime_daily_buy_list 라는 데이터프레임을
@@ -546,13 +543,13 @@ class simulator_func_mysql:
                 # 'append'는 테이블이 존재하면 데이터만을 추가한다.
                 df_realtime_daily_buy_list.to_sql('realtime_daily_buy_list', self.engine_simulator, if_exists='replace')
 
+                # Remove the possessed stocks in realtime_daily_buy_list
                 # 현재 보유 중인 종목은 매수 리스트(realtime_daily_buy_list) 에서 제거 하는 로직
                 if self.is_simul_table_exist(self.db_name, "transaction"):
                     sql = "delete from realtime_daily_buy_list where code in (select code from transaction where sell_date = '%s' or buy_date = '%s' or sell_date = '%s')"
                     # delete는 리턴 값이 없기 때문에 fetchall 쓰지 않는다.
                     self.engine_simulator.execute(sql % (0, date_rows_today, date_rows_today))
 
-                # 영상 촬영 후 추가 된 코드입니다. AI챕터에서 다룰 예정입니다.
                 if self.use_ai:
                     from ai_filter import ai_filter
                     ai_filter(self.ai_filter_num, engine=self.engine_simulator, until=date_rows_yesterday)
@@ -580,10 +577,10 @@ class simulator_func_mysql:
     def db_to_all_item_present_price_update(self, code_name, d1_diff_rate, close, open, high, low, volume, clo5, clo10, clo20,
                                                          clo40, clo60, clo80, clo100, clo120, option='ALL'):
         # 영상 촬영 후 아래 내용 업데이트 하였습니다.
-        if self.op == 'real': # 콜렉터에서 업데이트 할 때는 현재가를 종가로 업데이트(trader에서 실시간으로 present_price 업데이트함)
-            present_price = close
+        if self.simulator: # 시뮬레이터에서는 open가를 현재가로 업데이트
+            present_price = open
         else:
-            present_price = open # 시뮬레이터에서는 open가를 현재가로 업데이트
+            present_price = close # 콜렉터에서 업데이트 할 때는 현재가를 종가로 업데이트(trader에서 실시간으로 present_price 업데이트함)
 
         # option이 ALL이면 모든 데이터 업데이트
         if option == "ALL":
@@ -598,11 +595,11 @@ class simulator_func_mysql:
         self.engine_simulator.execute(sql)
 
     # balance 라는 테이블을 만들기 위한 self.jango 데이터프레임을 생성
-    def init_df_jango(self):
-        jango_temp = {'id': []}
+    def init_df_balance(self):
+        balance_temp = {'id': []}
 
-        self.jango = DataFrame(jango_temp,
-                               columns=['date', 'today_earning_rate', 'sum_valuation_profit', 'total_profit',
+        self.balance = DataFrame(balance_temp,
+                                 columns=['date', 'today_earning_rate', 'sum_valuation_profit', 'total_profit',
                                         'today_profit',
                                         'today_profitcut_count', 'today_losscut_count', 'today_profitcut',
                                         'today_losscut',
@@ -639,14 +636,14 @@ class simulator_func_mysql:
                                         'today_buy_reinvest_count3_remain_count',
                                         'today_buy_reinvest_count4_remain_count',
                                         'today_buy_reinvest_count5_remain_count'],
-                               index=jango_temp['id'])
+                                 index=balance_temp['id'])
 
-    # transaction 라는 테이블을 만들기 위한 self.df_all_item 데이터프레임
-    def init_df_all_item(self):
-        df_all_item_temp = {'id': []}
+    # transaction 라는 테이블을 만들기 위한 self.df_transaction 데이터프레임
+    def init_df_transaction(self):
+        df_transaction = {'id': []}
 
-        self.df_all_item = DataFrame(df_all_item_temp,
-                                     columns=['id', 'order_num', 'code', 'code_name', 'rate', 'purchase_rate',
+        self.df_transaction = DataFrame(df_transaction,
+                                        columns=['id', 'order_num', 'code', 'code_name', 'rate', 'purchase_rate',
                                               'purchase_price',
                                               'present_price', 'valuation_price',
                                               'valuation_profit', 'holding_amount', 'buy_date', 'item_total_purchase',
@@ -663,86 +660,86 @@ class simulator_func_mysql:
                                               "clo80_diff_rate", "clo100_diff_rate", "clo120_diff_rate"])
 
     # 가장 초기에 매수 했을 때 transaction 에 추가하는 함수
-    def db_to_all_item(self, min_date, df, index, code, code_name, purchase_price, yesterday_close):
-        self.df_all_item.loc[0, 'code'] = code
-        self.df_all_item.loc[0, 'code_name'] = code_name
+    def db_to_transaction(self, min_date, df, index, code, code_name, purchase_price, yesterday_close):
+        self.df_transaction.loc[0, 'code'] = code
+        self.df_transaction.loc[0, 'code_name'] = code_name
         # 초기는 반드시 rate가 -0.33 이여야한다. -> 수수료, 세금을 반영함
-        self.df_all_item.loc[0, 'rate'] = float(-0.33)
+        self.df_transaction.loc[0, 'rate'] = float(-0.33)
 
         if yesterday_close:
-            self.df_all_item.loc[0, 'purchase_rate'] = round(
+            self.df_transaction.loc[0, 'purchase_rate'] = round(
                 (float(purchase_price) - float(yesterday_close)) / float(yesterday_close) * 100, 2)
 
-        self.df_all_item.loc[0, 'purchase_price'] = purchase_price
-        self.df_all_item.loc[0, 'present_price'] = purchase_price
+        self.df_transaction.loc[0, 'purchase_price'] = purchase_price
+        self.df_transaction.loc[0, 'present_price'] = purchase_price
 
         # #jackbot("code_name: "+ code_name + "purchase_price: "+ str(purchase_price))
-        self.df_all_item.loc[0, 'holding_amount'] = int(self.invest_unit / purchase_price)
-        self.df_all_item.loc[0, 'buy_date'] = min_date
-        self.df_all_item.loc[0, 'item_total_purchase'] = self.df_all_item.loc[0, 'purchase_price'] * \
-                                                         self.df_all_item.loc[
+        self.df_transaction.loc[0, 'holding_amount'] = int(self.invest_unit / purchase_price)
+        self.df_transaction.loc[0, 'buy_date'] = min_date
+        self.df_transaction.loc[0, 'item_total_purchase'] = self.df_transaction.loc[0, 'purchase_price'] * \
+                                                            self.df_transaction.loc[
                                                              0, 'holding_amount']
 
         # 실시간으로 오늘 투자한 금액 합산
-        self.today_invest_price = self.today_invest_price + self.df_all_item.loc[0, 'item_total_purchase']
+        self.today_invest_price = self.today_invest_price + self.df_transaction.loc[0, 'item_total_purchase']
 
-        self.df_all_item.loc[0, 'chegyul_check'] = 0
-        self.df_all_item.loc[0, 'id'] = 0
+        self.df_transaction.loc[0, 'chegyul_check'] = 0
+        self.df_transaction.loc[0, 'id'] = 0
         # int로 넣어야 나중에 ++ 할수 있다.
         # self.df_all_item.loc[0, 'reinvest_date'] = '#'
         # self.df_all_item.loc[0, 'reinvest_count'] = int(0)
         # 다음에 투자할 금액은 invest_unit과 같은 금액이다.
-        self.df_all_item.loc[0, 'invest_unit'] = self.invest_unit
+        self.df_transaction.loc[0, 'invest_unit'] = self.invest_unit
         # self.df_all_item.loc[0, 'reinvest_unit'] = self.invest_unit
 
-        self.df_all_item.loc[0, 'purchase_rate']
+        self.df_transaction.loc[0, 'purchase_rate']
 
-        self.df_all_item.loc[0, 'yes_close'] = yesterday_close
-        self.df_all_item.loc[0, 'close'] = df.loc[index, 'close']
+        self.df_transaction.loc[0, 'yes_close'] = yesterday_close
+        self.df_transaction.loc[0, 'close'] = df.loc[index, 'close']
 
-        self.df_all_item.loc[0, 'open'] = df.loc[index, 'open']
-        self.df_all_item.loc[0, 'high'] = df.loc[index, 'high']
-        self.df_all_item.loc[0, 'low'] = df.loc[index, 'low']
-        self.df_all_item.loc[0, 'volume'] = df.loc[index, 'volume']
+        self.df_transaction.loc[0, 'open'] = df.loc[index, 'open']
+        self.df_transaction.loc[0, 'high'] = df.loc[index, 'high']
+        self.df_transaction.loc[0, 'low'] = df.loc[index, 'low']
+        self.df_transaction.loc[0, 'volume'] = df.loc[index, 'volume']
 
-        self.df_all_item.loc[0, 'd1_diff_rate'] = float(df.loc[index, 'd1_diff_rate'])
-        self.df_all_item.loc[0, 'clo5'] = df.loc[index, 'clo5']
-        self.df_all_item.loc[0, 'clo10'] = df.loc[index, 'clo10']
-        self.df_all_item.loc[0, 'clo20'] = df.loc[index, 'clo20']
-        self.df_all_item.loc[0, 'clo40'] = df.loc[index, 'clo40']
-        self.df_all_item.loc[0, 'clo60'] = df.loc[index, 'clo60']
-        self.df_all_item.loc[0, 'clo80'] = df.loc[index, 'clo80']
-        self.df_all_item.loc[0, 'clo100'] = df.loc[index, 'clo100']
-        self.df_all_item.loc[0, 'clo120'] = df.loc[index, 'clo120']
+        self.df_transaction.loc[0, 'd1_diff_rate'] = float(df.loc[index, 'd1_diff_rate'])
+        self.df_transaction.loc[0, 'clo5'] = df.loc[index, 'clo5']
+        self.df_transaction.loc[0, 'clo10'] = df.loc[index, 'clo10']
+        self.df_transaction.loc[0, 'clo20'] = df.loc[index, 'clo20']
+        self.df_transaction.loc[0, 'clo40'] = df.loc[index, 'clo40']
+        self.df_transaction.loc[0, 'clo60'] = df.loc[index, 'clo60']
+        self.df_transaction.loc[0, 'clo80'] = df.loc[index, 'clo80']
+        self.df_transaction.loc[0, 'clo100'] = df.loc[index, 'clo100']
+        self.df_transaction.loc[0, 'clo120'] = df.loc[index, 'clo120']
 
         if df.loc[index, 'clo5_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo5_diff_rate'] = float(df.loc[index, 'clo5_diff_rate'])
+            self.df_transaction.loc[0, 'clo5_diff_rate'] = float(df.loc[index, 'clo5_diff_rate'])
         if df.loc[index, 'clo10_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo10_diff_rate'] = float(df.loc[index, 'clo10_diff_rate'])
+            self.df_transaction.loc[0, 'clo10_diff_rate'] = float(df.loc[index, 'clo10_diff_rate'])
         if df.loc[index, 'clo20_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo20_diff_rate'] = float(df.loc[index, 'clo20_diff_rate'])
+            self.df_transaction.loc[0, 'clo20_diff_rate'] = float(df.loc[index, 'clo20_diff_rate'])
         if df.loc[index, 'clo40_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo40_diff_rate'] = float(df.loc[index, 'clo40_diff_rate'])
+            self.df_transaction.loc[0, 'clo40_diff_rate'] = float(df.loc[index, 'clo40_diff_rate'])
 
         if df.loc[index, 'clo60_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo60_diff_rate'] = float(df.loc[index, 'clo60_diff_rate'])
+            self.df_transaction.loc[0, 'clo60_diff_rate'] = float(df.loc[index, 'clo60_diff_rate'])
         if df.loc[index, 'clo80_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo80_diff_rate'] = float(df.loc[index, 'clo80_diff_rate'])
+            self.df_transaction.loc[0, 'clo80_diff_rate'] = float(df.loc[index, 'clo80_diff_rate'])
         if df.loc[index, 'clo100_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo100_diff_rate'] = float(df.loc[index, 'clo100_diff_rate'])
+            self.df_transaction.loc[0, 'clo100_diff_rate'] = float(df.loc[index, 'clo100_diff_rate'])
         if df.loc[index, 'clo120_diff_rate'] is not None:
-            self.df_all_item.loc[0, 'clo120_diff_rate'] = float(df.loc[index, 'clo120_diff_rate'])
+            self.df_transaction.loc[0, 'clo120_diff_rate'] = float(df.loc[index, 'clo120_diff_rate'])
 
-        self.df_all_item.loc[0, 'valuation_profit'] = int(0)
+        self.df_transaction.loc[0, 'valuation_profit'] = int(0)
 
         # 컬럼 중에 nan 값이 있는 경우 0으로 변경 -> 이렇게 안하면 아래 데이터베이스에 넣을 때
         # AttributeError: 'numpy.int64' object has no attribute 'translate' 에러 발생
-        self.df_all_item = self.df_all_item.fillna(0)
+        self.df_transaction = self.df_transaction.fillna(0)
 
         if self.is_simul_table_exist(self.db_name, "transaction"):
-            self.df_all_item.to_sql('transaction', self.engine_simulator, if_exists='append')
+            self.df_transaction.to_sql('transaction', self.engine_simulator, if_exists='append')
         else:
-            self.df_all_item.to_sql('transaction', self.engine_simulator, if_exists='replace')
+            self.df_transaction.to_sql('transaction', self.engine_simulator, if_exists='replace')
 
     # 보유한 종목들을 가져오는 함수
     # sell_date가 0이면 현재 보유 중인 종목이다. 매도를 할 경우 sell_date에 매도 한 날짜가 찍힌다.
@@ -802,7 +799,8 @@ class simulator_func_mysql:
 
     # daily_buy_list에 일자 테이블이 존재하는지 확인하는 함수
     def is_date_exist(self, date):
-        print("is_date_exist 함수에 들어왔습니다!", date)
+        logger.info("Current position: is_date_exist")
+        logger.info("parameter value: ", date)
         sql = "select 1 from information_schema.tables where table_schema ='daily_buy_list' and table_name = '%s'"
         rows = self.engine_daily_buy_list.execute(sql % (date)).fetchall()
         if len(rows) == 1:
@@ -811,20 +809,20 @@ class simulator_func_mysql:
             return False
 
     # 잔액 체크 함수, 잔고가 있으면 True를 반환, 없으면 False를 반환
-    def jango_check(self):
+    def balance_check(self):
         if int(self.d2_deposit) >= (int(self.limit_money) + int(self.invest_unit)):
             return True
         else:
-            print("돈부족해서 invest 불가!!!!!!!!")
+            print("There is no enough money to invest")
             return False
 
     # 출력 함수
     def print_info(self, min_date):
-        print("*&*&*&* self.simul_num :" + str(self.simul_num))
-        # all_itme_db 테이블이 생성 되어 있으면 보유한 종목 수를 출력
+        print("self.simul_num :" + str(self.simul_num))
+        # transaction 테이블이 생성 되어 있으면 보유한 종목 수를 출력
         if self.is_simul_table_exist(self.db_name, "transaction"):
-            print("simulating 시간: " + str(min_date))
-            print("보유종목 수 !!: " + str(self.get_count_possessed_item()))
+            print("Simulation Time: " + str(min_date))
+            print("Number of holdings: " + str(self.get_count_possessed_item()))
 
     # 특정 종목의 시작가를 가져오는 함수(일별)
     def get_now_open_price_by_date(self, code, date):
@@ -844,7 +842,7 @@ class simulator_func_mysql:
         if len(rows) == 1:
             return True
         else:
-            print("daily_craw db 에 " + str(code_name) + " 테이블이 존재하지 않는다. !! ")
+            print(f"There is no table called {str(code_name)} in daily_craw db")
             return False
 
     # min_craw 데이터 베이스에서 특정 종목이 존재하는 여부를 파악하는 함수
@@ -854,7 +852,7 @@ class simulator_func_mysql:
         if len(rows) == 1:
             return True
         else:
-            print("min_craw db 에 " + str(code_name) + " 테이블이 존재하지 않는다. !! ")
+            print(f"There is no table called {str(code_name)} in min_craw db")
             return False
 
     # 분별 현재 누적 거래량 가져오는 함수
@@ -931,7 +929,8 @@ class simulator_func_mysql:
     # 보유 중인 종목들의 주가를 일별로 업데이트 하는 함수
     # transaction에서 업데이트를 한다.  option = 'ALL' 의미는 인자값을 date 하나만 줬을 때 option에는 기본값으로 ALL을 준다는 의미
     def update_all_db_by_date(self, date, option='ALL'):
-        print("update_all_db_by_date 함수에 들어왔다!")
+        logger.info("Current position: update_all_db_by_date")
+        logger.info(f"parameter value: date: {date}, option: {option}")
         # 현재 보유 중인 종목 들의 code_name 리스트
         possessed_code_name_list = self.get_data_from_possessed_item()
         if len(possessed_code_name_list) == 0:
@@ -978,7 +977,7 @@ class simulator_func_mysql:
     # 언제 종목을 팔지(익절, 손절) 결정 하는 알고리즘.
     # !@##############################################################################################################################
     def get_sell_list(self, i):
-        print("get_sell_list!!!")
+        logger.info("Current position: get_sell_list")
         # 단순히 현재 보유 종목의 수익률이
         # 익절 기준 수익률(self.sell_point) 이 넘거나,
         # 손절 기준 수익률(self.losscut_point) 보다 떨어지면 파는 알고리즘
@@ -1005,7 +1004,8 @@ class simulator_func_mysql:
 
         ##################################################################################################################################################################################################################
         else:
-            print(f"{self.simul_num}번 알고리즘에 대한 self.sell_list_num 설정이 비었습니다. variable_setting 함수에서 self.sell_list_num을 확인해주세요.")
+            print(f"There is no {self.sell_list_num} for {self.simul_num}")
+            logger.info("sys.exit(1) by no matched self.sell_list_num")
             sys.exit(1)
 
         return sell_list
@@ -1034,12 +1034,18 @@ class simulator_func_mysql:
             valuation_profit = sell_list[i][3]
 
             if get_sell_rate < 0:
-                print("손절 매도!!!!$$$$$$$$$$$ 수익: " + str(valuation_profit) + " / 수익률 : " + str(
-                    get_sell_rate) + " / 종목코드: " + str(get_sell_code) + " $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+                print("[Stop Loss] -------------")
+                print("profit: " + str(valuation_profit))
+                print("Rate of return : " + str(get_sell_rate))
+                print("Ticker: " + str(get_sell_code))
+                print("-------------------------")
 
             else:
-                print("익절 매도!!!!$$$$$$$$$$$ 수익: " + str(valuation_profit) + " / 수익률 : " + str(
-                    get_sell_rate) + " / 종목코드: " + str(get_sell_code) + " $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+                print("[Sold with profit] -------------")
+                print("profit: " + str(valuation_profit))
+                print("Rate of return : " + str(get_sell_rate))
+                print("Ticker: " + str(get_sell_code))
+                print("-------------------------")
 
             # 실제로 매도를 하는 함수 (매도 한 결과를 transaction에 반영)
             self.sell_send_order(date, get_present_price, get_sell_rate, get_sell_code)
@@ -1140,82 +1146,84 @@ class simulator_func_mysql:
     def db_to_jango(self, date_rows_today):
         # 정산 함수
         self.check_balance()
+
         if self.is_simul_table_exist(self.db_name, "transaction") == False:
+            print("Three is no table called transaction")
             return
 
-        self.jango.loc[0, 'date'] = date_rows_today
+        self.balance.loc[0, 'date'] = date_rows_today
 
         # self.jango.loc[0, 'total_asset'] = self.total_invest_price - self.loan_money
-        self.jango.loc[0, 'today_profit'] = self.get_today_profit(date_rows_today)
-        self.jango.loc[0, 'sum_valuation_profit'] = self.sum_valuation_profit
-        self.jango.loc[0, 'total_profit'] = self.total_valuation_profit
+        self.balance.loc[0, 'today_profit'] = self.get_today_profit(date_rows_today)
+        self.balance.loc[0, 'sum_valuation_profit'] = self.sum_valuation_profit
+        self.balance.loc[0, 'total_profit'] = self.total_valuation_profit
 
-        self.jango.loc[0, 'total_invest'] = self.total_invest_price
-        self.jango.loc[0, 'd2_deposit'] = self.d2_deposit
+        self.balance.loc[0, 'total_invest'] = self.total_invest_price
+        self.balance.loc[0, 'd2_deposit'] = self.d2_deposit
         # 총매입금액
-        self.jango.loc[0, 'sum_item_total_purchase'] = self.get_sum_item_total_purchase()
+        self.balance.loc[0, 'sum_item_total_purchase'] = self.get_sum_item_total_purchase()
 
         # 총평가금액
-        self.jango.loc[0, 'total_evaluation'] = self.get_sum_valuation_price()
-        self.jango.loc[0, 'today_profitcut_count'] = self.get_today_profitcut_count(date_rows_today)
-        self.jango.loc[0, 'today_losscut_count'] = self.get_today_losscut_count(date_rows_today)
+        self.balance.loc[0, 'total_evaluation'] = self.get_sum_valuation_price()
+        self.balance.loc[0, 'today_profitcut_count'] = self.get_today_profitcut_count(date_rows_today)
+        self.balance.loc[0, 'today_losscut_count'] = self.get_today_losscut_count(date_rows_today)
 
-        self.jango.loc[0, 'today_invest_price'] = float(self.today_invest_price)
+        self.balance.loc[0, 'today_invest_price'] = float(self.today_invest_price)
 
         # self.jango.loc[0, 'today_reinvest_price'] = self.today_reinvest_price
-        self.jango.loc[0, 'today_sell_price'] = self.get_sum_today_sell_price(date_rows_today)
+        self.balance.loc[0, 'today_sell_price'] = self.get_sum_today_sell_price(date_rows_today)
 
         # 오늘 기준 수익률 (키움 잔고 상단에 뜨는 수익률) -0.33 (수수료, 세금)
         try:
-            self.jango.loc[0, 'today_rate'] = round(
-                (float(self.jango.loc[0, 'total_evaluation']) - float(
-                    self.jango.loc[0, 'sum_item_total_purchase'])) / float(
-                    self.jango.loc[0, 'sum_item_total_purchase']) * 100 - 0.33, 2)
+            self.balance.loc[0, 'today_rate'] = round(
+                (float(self.balance.loc[0, 'total_evaluation']) - float(
+                    self.balance.loc[0, 'sum_item_total_purchase'])) / float(
+                    self.balance.loc[0, 'sum_item_total_purchase']) * 100 - 0.33, 2)
         except ZeroDivisionError as e:
             pass
 
         # self.jango.loc[0, 'volume_limit'] = self.volume_limit
 
         # self.jango.loc[0, 'reinvest_point'] = self.reinvest_point
-        self.jango.loc[0, 'sell_point'] = self.sell_point
+        self.balance.loc[0, 'sell_point'] = self.sell_point
         # self.jango.loc[0, 'max_reinvest_count'] = self.max_reinvest_count
-        self.jango.loc[0, 'invest_limit_rate'] = self.invest_limit_rate
-        self.jango.loc[0, 'invest_unit'] = self.invest_unit
+        self.balance.loc[0, 'invest_limit_rate'] = self.invest_limit_rate
+        self.balance.loc[0, 'invest_unit'] = self.invest_unit
 
-        self.jango.loc[0, 'limit_money'] = self.limit_money
-        self.jango.loc[0, 'total_possess_count'] = self.get_total_possess_count()
-        self.jango.loc[0, 'today_buy_list_count'] = self.len_df_realtime_daily_buy_list
+        self.balance.loc[0, 'limit_money'] = self.limit_money
+        self.balance.loc[0, 'total_possess_count'] = self.get_total_possess_count()
+        self.balance.loc[0, 'today_buy_list_count'] = self.len_df_realtime_daily_buy_list
         # self.jango.loc[0, 'today_reinvest_count'] = self.get_today_reinvest_count(date_rows_today)
         # self.jango.loc[0, 'today_cant_reinvest_count'] = self.get_today_cant_reinvest_count()
 
         # 오늘 익절한 금액
-        self.jango.loc[0, 'today_profitcut'] = self.get_sum_today_profitcut(date_rows_today)
+        self.balance.loc[0, 'today_profitcut'] = self.get_sum_today_profitcut(date_rows_today)
         # 오늘 손절한 금액
-        self.jango.loc[0, 'today_losscut'] = self.get_sum_today_losscut(date_rows_today)
+        self.balance.loc[0, 'today_losscut'] = self.get_sum_today_losscut(date_rows_today)
 
         # 지금까지 총 익절한 금액
-        self.jango.loc[0, 'total_profitcut'] = self.get_sum_total_profitcut()
+        self.balance.loc[0, 'total_profitcut'] = self.get_sum_total_profitcut()
 
         # 지금까지 총 손절한 금액
-        self.jango.loc[0, 'total_losscut'] = self.get_sum_total_losscut()
+        self.balance.loc[0, 'total_losscut'] = self.get_sum_total_losscut()
 
         # 지금까지 총 익절한놈들
-        self.jango.loc[0, 'total_profitcut_count'] = self.get_sum_total_profitcut_count()
+        self.balance.loc[0, 'total_profitcut_count'] = self.get_sum_total_profitcut_count()
 
         # 지금까지 총 손절한 놈들
 
-        self.jango.loc[0, 'total_losscut_count'] = self.get_sum_total_losscut_count()
+        self.balance.loc[0, 'total_losscut_count'] = self.get_sum_total_losscut_count()
 
-        self.jango.loc[0, 'today_buy_count'] = 0
-        self.jango.loc[0, 'today_buy_total_sell_count'] = 0
-        self.jango.loc[0, 'today_buy_total_possess_count'] = 0
+        self.balance.loc[0, 'today_buy_count'] = 0
+        self.balance.loc[0, 'today_buy_total_sell_count'] = 0
+        self.balance.loc[0, 'today_buy_total_possess_count'] = 0
 
-        self.jango.loc[0, 'today_buy_today_profitcut_count'] = 0
+        self.balance.loc[0, 'today_buy_today_profitcut_count'] = 0
 
-        self.jango.loc[0, 'today_buy_today_losscut_count'] = 0
-        self.jango.loc[0, 'today_buy_total_profitcut_count'] = 0
+        self.balance.loc[0, 'today_buy_today_losscut_count'] = 0
+        self.balance.loc[0, 'today_buy_total_profitcut_count'] = 0
 
-        self.jango.loc[0, 'today_buy_total_losscut_count'] = 0
+        self.balance.loc[0, 'today_buy_total_losscut_count'] = 0
         # self.jango.loc[0, 'today_buy_reinvest_count0_sell_count'] = 0
         #
         # self.jango.loc[0, 'today_buy_reinvest_count1_sell_count'] = 0
@@ -1244,7 +1252,7 @@ class simulator_func_mysql:
         # 'fail'은 데이터베이스에 테이블이 있다면 아무 동작도 수행하지 않는다.
         # 'replace'는 테이블이 존재하면 기존 테이블을 삭제하고 새로 테이블을 생성한 후 데이터를 삽입한다.
         # 'append'는 테이블이 존재하면 데이터만을 추가한다.
-        self.jango.to_sql('balance', self.engine_simulator, if_exists='append')
+        self.balance.to_sql('balance', self.engine_simulator, if_exists='append')
 
         #     # today_earning_rate
         sql = "update balance set today_earning_rate =round(today_profit / total_invest * '%s',2) WHERE date='%s'"
@@ -1258,7 +1266,7 @@ class simulator_func_mysql:
             sql = "select date from balance"
             rows = self.engine_simulator.execute(sql).fetchall()
 
-            print('balance 최종 정산 중...')
+            print("Calculating the final balance ...")
             # 위에 전체
             for i in range(len_date):
                 # today_buy_count
@@ -1297,7 +1305,8 @@ class simulator_func_mysql:
 
                 sql = "UPDATE balance SET today_buy_total_losscut_rate=round(today_buy_total_losscut_count/today_buy_count*100,2) WHERE date = '%s'"
                 self.engine_simulator.execute(sql % (rows[i][0]))
-        print('balance 최종 정산 완료')
+
+        print("Final balance is successfully calculated")
 
     # 분 데이터를 가져오는 함수
     def get_date_min_for_simul(self, simul_start_date):
@@ -1331,7 +1340,7 @@ class simulator_func_mysql:
                     # 매도 함수
                     self.auto_trade_sell_stock(min, i)
                     # self.buy_stop 이 False 이고, 보유 자산이 있으면 실제 매수를 한다.
-                    if not self.buy_stop and self.jango_check():
+                    if not self.buy_stop and self.balance_check():
                         # 매수 할 종목을 가져온다
                         self.get_realtime_daily_buy_list()
 
@@ -1339,23 +1348,25 @@ class simulator_func_mysql:
 
                             self.auto_trade_stock_realtime(min, date_rows_today, date_rows_yesterday)
                         else:
-                            print("realtime_daily_buy_list에 금일 매수 대상 종목이 0개 이다.  ")
+                            print(f"There is no column in realtime_daily_buy_list db at {date_rows_today}")
 
 
                 #  여긴 가장 초반에 all_itme_db를 만들어야 할때이거나 매수한 종목이 없을 때 들어가는 로직
                 else:
-                    if not self.buy_stop and self.jango_check():
+                    if not self.buy_stop and self.balance_check():
                         self.auto_trade_stock_realtime(min, date_rows_today, date_rows_yesterday)
 
                 # 9시에만 매수를 하는 경우는 한번만 9시에 매수 하고 self.buy_stop을 true로 변경하여 이후로 매수하지 않도록 설정
                 if not self.buy_stop and self.only_buy_at_open:
-                    print("9시 매수 끝!!!!!!!!!!")
+                    print("Successfully bought stocks at open time")
                     self.buy_stop = True
 
-
         else:
-            print("min_craw db의 종목 테이블에 " + str(
-                date_rows_today) + " 데이터가 존재 하지 않는다! self.simul_start_date 날짜를 변경 하세요! (분별 데이터는 콜렉터에서 최근 1년 데이터만 가져옵니다! ")
+            print("------------------------------------------------")
+            print(f"There is no data {str(date_rows_today)} in min_craw db")
+            print("Change self.simul_start_date")
+            print("Only recent year data is available for min_craw")
+            print("------------------------------------------------")
 
     # 새로운 종목 매수 및 보유한 종목의 데이터를 업데이트 하는 함수, 매도 함수도 포함
     def trading_by_date(self, date_rows_today, date_rows_yesterday, i):
@@ -1371,13 +1382,13 @@ class simulator_func_mysql:
             self.auto_trade_sell_stock(date_rows_today, i)
 
             # 보유 자산이 있다면, 실제 매수를 한다.
-            if self.jango_check():
+            if self.balance_check():
                 # 돈있으면 매수 시작
                 self.auto_trade_stock_realtime(str(date_rows_today) + "0900", date_rows_today, date_rows_yesterday)
 
         #  여긴 가장 초반에 all_itme_db를 만들어야 할때이거나 매수한 종목이 없을 때 들어가는 로직
         else:
-            if self.jango_check():
+            if self.balance_check():
                 self.auto_trade_stock_realtime(str(date_rows_today) + "0900", date_rows_today, date_rows_yesterday)
 
     # 매일 시뮬레이팅 돌기 전 초기화 세팅
@@ -1387,7 +1398,7 @@ class simulator_func_mysql:
 
     # 분별 시뮬레이팅
     def simul_by_min(self, date_rows_today, date_rows_yesterday, i):
-        print("**************************   date: " + date_rows_today)
+        print("date: " + date_rows_today)
         # 일별 시뮬레이팅 하며 변수 초기화(분별시뮬레이터의 경우도 하루 단위로 초기화)
         self.daily_variable_setting()
         # daily_buy_list에 시뮬레이팅 할 날짜에 해당하는 테이블과 전 날 테이블이 존재하는지 확인
@@ -1404,11 +1415,11 @@ class simulator_func_mysql:
                 self.update_all_db_by_date(date_rows_today, option='ALL')
 
         else:
-            print(date_rows_today + "테이블은 존재하지 않는다!!!")
+            print(f"There is no table for {date_rows_today}")
 
     # 일별 시뮬레이팅
     def simul_by_date(self, date_rows_today, date_rows_yesterday, i):
-        print("**************************   date: " + date_rows_today)
+        print("date: " + date_rows_today)
         # 일별 시뮬레이팅 하며 변수 초기화
         self.daily_variable_setting()
         # daily_buy_list에 시뮬레이팅 할 날짜에 해당하는 테이블과 전 날 테이블이 존재하는지 확인
@@ -1441,7 +1452,7 @@ class simulator_func_mysql:
             # self.simul_reset 이 False, 즉 시뮬레이터를 멈춘 지점 부터 실행하기 위한 조건
             if not self.simul_reset and not self.simul_reset_lock:
                 if int(date_rows_today) <= int(self.last_simul_date):
-                    print("**************************   date: " + date_rows_today + "simul jango date exist pass ! ")
+                    print(f"simul balance at the date {date_rows_today} exist")
                     continue
                 else:
                     self.simul_reset_lock = True

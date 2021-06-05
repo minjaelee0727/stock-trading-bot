@@ -444,23 +444,23 @@ class open_api(QAxWidget):
 
     # all_item_db에 추가하는 함수
     def db_to_all_item(self, order_num, code, chegyul_check, purchase_price, rate):
-        logger.debug("db_to_all_item 함수에 들어왔다!!!")
+        logger.debug("db_to_transaction 함수에 들어왔다!!!")
         self.date_setting()
-        self.sf.init_df_all_item()
-        self.sf.df_all_item.loc[0, 'order_num'] = order_num
-        self.sf.df_all_item.loc[0, 'code'] = str(code)
-        self.sf.df_all_item.loc[0, 'rate'] = float(rate)
+        self.sf.init_df_transaction()
+        self.sf.df_transaction.loc[0, 'order_num'] = order_num
+        self.sf.df_transaction.loc[0, 'code'] = str(code)
+        self.sf.df_transaction.loc[0, 'rate'] = float(rate)
 
-        self.sf.df_all_item.loc[0, 'buy_date'] = self.today_detail
+        self.sf.df_transaction.loc[0, 'buy_date'] = self.today_detail
         # 사는 순간 chegyul_check 1 로 만드는거다.
-        self.sf.df_all_item.loc[0, 'chegyul_check'] = chegyul_check
+        self.sf.df_transaction.loc[0, 'chegyul_check'] = chegyul_check
         # int로 넣어야 나중에 ++ 할수 있다.
-        self.sf.df_all_item.loc[0, 'reinvest_date'] = '#'
+        self.sf.df_transaction.loc[0, 'reinvest_date'] = '#'
         # df_all_item.loc[0, 'reinvest_count'] = int(0)
         # 다음에 투자할 금액은 invest_unit과 같은 금액이다.
-        self.sf.df_all_item.loc[0, 'invest_unit'] = self.invest_unit
+        self.sf.df_transaction.loc[0, 'invest_unit'] = self.invest_unit
         # df_all_item.loc[0, 'reinvest_unit'] = self.invest_unit
-        self.sf.df_all_item.loc[0, 'purchase_price'] = purchase_price
+        self.sf.df_transaction.loc[0, 'purchase_price'] = purchase_price
 
         # 신규 매수의 경우
         if order_num != 0:
@@ -468,44 +468,44 @@ class open_api(QAxWidget):
             if recent_daily_buy_list_date:
                 df = self.sf.get_daily_buy_list_by_code(code, recent_daily_buy_list_date)
                 if not df.empty:
-                    self.sf.df_all_item.loc[0, 'code_name'] = df.loc[0, 'code_name']
-                    self.sf.df_all_item.loc[0, 'close'] = df.loc[0, 'close']
-                    self.sf.df_all_item.loc[0, 'open'] = df.loc[0, 'open']
-                    self.sf.df_all_item.loc[0, 'high'] = df.loc[0, 'high']
-                    self.sf.df_all_item.loc[0, 'low'] = df.loc[0, 'low']
-                    self.sf.df_all_item.loc[0, 'volume'] = df.loc[0, 'volume']
-                    self.sf.df_all_item.loc[0, 'd1_diff_rate'] = float(df.loc[0, 'd1_diff_rate'])
-                    self.sf.df_all_item.loc[0, 'clo5'] = df.loc[0, 'clo5']
-                    self.sf.df_all_item.loc[0, 'clo10'] = df.loc[0, 'clo10']
-                    self.sf.df_all_item.loc[0, 'clo20'] = df.loc[0, 'clo20']
-                    self.sf.df_all_item.loc[0, 'clo40'] = df.loc[0, 'clo40']
-                    self.sf.df_all_item.loc[0, 'clo60'] = df.loc[0, 'clo60']
-                    self.sf.df_all_item.loc[0, 'clo80'] = df.loc[0, 'clo80']
-                    self.sf.df_all_item.loc[0, 'clo100'] = df.loc[0, 'clo100']
-                    self.sf.df_all_item.loc[0, 'clo120'] = df.loc[0, 'clo120']
+                    self.sf.df_transaction.loc[0, 'code_name'] = df.loc[0, 'code_name']
+                    self.sf.df_transaction.loc[0, 'close'] = df.loc[0, 'close']
+                    self.sf.df_transaction.loc[0, 'open'] = df.loc[0, 'open']
+                    self.sf.df_transaction.loc[0, 'high'] = df.loc[0, 'high']
+                    self.sf.df_transaction.loc[0, 'low'] = df.loc[0, 'low']
+                    self.sf.df_transaction.loc[0, 'volume'] = df.loc[0, 'volume']
+                    self.sf.df_transaction.loc[0, 'd1_diff_rate'] = float(df.loc[0, 'd1_diff_rate'])
+                    self.sf.df_transaction.loc[0, 'clo5'] = df.loc[0, 'clo5']
+                    self.sf.df_transaction.loc[0, 'clo10'] = df.loc[0, 'clo10']
+                    self.sf.df_transaction.loc[0, 'clo20'] = df.loc[0, 'clo20']
+                    self.sf.df_transaction.loc[0, 'clo40'] = df.loc[0, 'clo40']
+                    self.sf.df_transaction.loc[0, 'clo60'] = df.loc[0, 'clo60']
+                    self.sf.df_transaction.loc[0, 'clo80'] = df.loc[0, 'clo80']
+                    self.sf.df_transaction.loc[0, 'clo100'] = df.loc[0, 'clo100']
+                    self.sf.df_transaction.loc[0, 'clo120'] = df.loc[0, 'clo120']
 
                     if df.loc[0, 'clo5_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo5_diff_rate'] = float(df.loc[0, 'clo5_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo5_diff_rate'] = float(df.loc[0, 'clo5_diff_rate'])
                     if df.loc[0, 'clo10_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo10_diff_rate'] = float(df.loc[0, 'clo10_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo10_diff_rate'] = float(df.loc[0, 'clo10_diff_rate'])
                     if df.loc[0, 'clo20_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo20_diff_rate'] = float(df.loc[0, 'clo20_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo20_diff_rate'] = float(df.loc[0, 'clo20_diff_rate'])
                     if df.loc[0, 'clo40_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo40_diff_rate'] = float(df.loc[0, 'clo40_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo40_diff_rate'] = float(df.loc[0, 'clo40_diff_rate'])
 
                     if df.loc[0, 'clo60_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo60_diff_rate'] = float(df.loc[0, 'clo60_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo60_diff_rate'] = float(df.loc[0, 'clo60_diff_rate'])
                     if df.loc[0, 'clo80_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo80_diff_rate'] = float(df.loc[0, 'clo80_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo80_diff_rate'] = float(df.loc[0, 'clo80_diff_rate'])
                     if df.loc[0, 'clo100_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo100_diff_rate'] = float(df.loc[0, 'clo100_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo100_diff_rate'] = float(df.loc[0, 'clo100_diff_rate'])
                     if df.loc[0, 'clo120_diff_rate'] is not None:
-                        self.sf.df_all_item.loc[0, 'clo120_diff_rate'] = float(df.loc[0, 'clo120_diff_rate'])
+                        self.sf.df_transaction.loc[0, 'clo120_diff_rate'] = float(df.loc[0, 'clo120_diff_rate'])
 
         # 컬럼 중에 nan 값이 있는 경우 0으로 변경 -> 이렇게 안하면 아래 데이터베이스에 넣을 때
         # AttributeError: 'numpy.int64' object has no attribute 'translate' 에러 발생
-        self.sf.df_all_item = self.sf.df_all_item.fillna(0)
-        self.sf.df_all_item.to_sql('all_item_db', self.engine_JB, if_exists='append', dtype={
+        self.sf.df_transaction = self.sf.df_transaction.fillna(0)
+        self.sf.df_transaction.to_sql('all_item_db', self.engine_JB, if_exists='append', dtype={
             'code_name': Text,
             'rate': Float,
             'sell_rate': Float,
@@ -969,7 +969,7 @@ class open_api(QAxWidget):
 
     # 잔액 체크 함수
     def jango_check(self):
-        logger.debug("jango_check 함수에 들어왔습니다!")
+        logger.debug("balance_check 함수에 들어왔습니다!")
         self.get_d2_deposit()
         # 아래에 1.5 곱해준 이유는 invest unit보다 d2가 조금 많으면 못사네 ; 그래서 넉넉히 잡은거임  매수증거금때문이다.
         # if (int(self.d2_deposit_before_format) > (int(self.sf.limit_money) + int(self.invest_unit)*1.5)) :
