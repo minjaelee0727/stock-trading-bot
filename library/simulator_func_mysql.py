@@ -114,7 +114,7 @@ class simulator_func_mysql:
             self.invest_limit_rate = 1.01
             self.invest_min_limit_rate = 0.98
 
-            self.db_to_realtime_daily_buy_list_num = 1
+            self.db_to_realtime_daily_buy_list_num = 2
             self.sell_list_num = 1
 
         else:
@@ -472,6 +472,7 @@ class simulator_func_mysql:
     ##!@####################################################################################################################################################################################
     # 매수 할 종목의 리스트를 선정 알고리즘
     def db_to_realtime_daily_buy_list(self, date_rows_today, date_rows_yesterday, i):
+
         # 5 / 20 골든크로스 buy
         if self.db_to_realtime_daily_buy_list_num == 1:
             # orderby는 거래량 많은 순서
@@ -481,26 +482,47 @@ class simulator_func_mysql:
                                                             "and close < '%s' group by code"
             realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
-
-        # 5 / 40 골든크로스 buy
+        #BBands
         elif self.db_to_realtime_daily_buy_list_num == 2:
-            # orderby는 거래량 많은 순서
-            sql = "select * from `" + date_rows_yesterday + "` a where yes_clo40 > yes_clo5 and clo5 > clo40 " \
-                                                            "and NOT exists (select null from stock_konex b where a.code=b.code) " \
-                                                            "and close < '%s' group by code"
-            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
+            realtime_daily_buy_list = []
+            ma_period = 20
+
+            if i > ma_period:
+                sql = f"""
+                    SELECT *
+                    FROM '{date_rows_yesterday}' a
+                    WHERE NOT exists (SELECT null FROM stock_konex b WHERE a.code = b.code)
+                    AND volume != 0
+                    AND close < '{self.invest_unit}'
+                    ORDER BY volume * close DESC limit 100
+                """
+                realtime_daily_buy_list_temp = self.engine_daily_buy_list.execute(sql).fetchall()
+
+                for item in realtime_daily_buy_list_temp:
+                    code_name = item.code_name
+                    bb_sql = f"""
+                        SELECT (close + high + low)/3
+                        FROM '{code_name}'
+                        WHERE date <= '{date_rows_yesterday}'
+                        ORDER BY date DESC limit {ma_period}
+                    """
+
+                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
+
+                    if len(df_close) >= ma_period:
+                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+                        if result:
+                            mbb, ubb, lbb, perb, bw = result
+
+                            if perb < 0:
+                                realtime_daily_buy_list.append(item)
 
 
-        elif self.db_to_realtime_daily_buy_list_num == 3:
-            sql = "select * from `" + date_rows_yesterday + "` a where d1_diff_rate > 1 " \
-                                                            "and NOT exists (select null from stock_konex b where a.code=b.code) " \
-                                                            "and close < '%s' group by code"
-            # 아래 명령을 통해 테이블로 부터 데이터를 가져오면 리스트 형태로 realtime_daily_buy_list 에 담긴다.
             realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
         ######################################################################################################################################################################################
         else:
-            print(f"There is no simulator: {self.simul_num}")
+            print(f"There is no matcehd buying algorithm in the simul number, {self.simul_num}")
             logger.info("sys.exit(1) by no matched simulator number")
             sys.exit(1)
 
@@ -572,6 +594,77 @@ class simulator_func_mysql:
         # len_df_realtime_daily_buy_list에 다가 0을 넣는다.
         else:
             self.len_df_realtime_daily_buy_list = 0
+
+    # 언제 종목을 팔지(익절, 손절) 결정 하는 알고리즘.
+    # !@##############################################################################################################################
+    def get_sell_list(self, i):
+        logger.info("Current position: get_sell_list")
+        # 단순히 현재 보유 종목의 수익률이
+        # 익절 기준 수익률(self.sell_point) 이 넘거나,
+        # 손절 기준 수익률(self.losscut_point) 보다 떨어지면 파는 알고리즘
+        if self.sell_list_num == 1:
+            # select 할 컬럼은 항상 코드명, 수익률, 매도할 종목의 현재가, 수익(손실)금액
+            # sql 첫 번째 라인은 항상 고정
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and (rate>='%s' or rate <= '%s') group by code"
+            sell_list = self.engine_simulator.execute(sql % (0, self.sell_point, self.losscut_point)).fetchall()
+
+        # 5 / 20 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
+        elif self.sell_list_num == 2:
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and ((clo5 < clo20) or rate <= '%s') group by code"
+            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
+
+
+        # 5 / 40 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
+        elif self.sell_list_num == 3:
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and ((clo5 < clo40) or rate <= '%s') group by code"
+
+            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
+
+        elif self.sell_list_num == 4:
+            sell_list = []
+            ma_period = 20
+
+            if i > ma_period:
+                sql = """
+                    SELECT code, rate, present_price, valuation_profit, code_name
+                    FROM transaction 
+                    WHERE (sell_date = '0')
+                    group by code
+                """
+
+                sell_list_temp = self.engine_simulator.execute(sql).fetchall()
+
+                for item in sell_list_temp:
+                    code_name = item.code_name
+                    date_rows_yesterday = self.date_rows[i - 1][0]
+
+                    bb_sql = f"""
+                        SELECT close
+                        FROM '{code_name}'
+                        WHERE date <= '{date_rows_yesterday}'
+                        ORDER By date DESC limit {ma_period}
+                    """
+                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
+
+                    if len(df_close) >= ma_period:
+                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+
+                        if result:
+                            mbb, ubb, lbb, perb, bw = result
+
+                            if perb > 1:
+                                sell_list.append(item)
+
+        ##################################################################################################################################################################################################################
+        else:
+            print(f"There is no {self.sell_list_num} for {self.simul_num}")
+            logger.info("sys.exit(1) by no matched self.sell_list_num")
+            sys.exit(1)
+
+        return sell_list
 
     # 현재의 주가를 transaction에 있는 보유한 종목들에 대해서 반영 한다.
     def db_to_all_item_present_price_update(self, code_name, d1_diff_rate, close, open, high, low, volume, clo5, clo10, clo20,
@@ -973,42 +1066,6 @@ class simulator_func_mysql:
         # valuation_profit, rate 업데이트
         sql = "update transaction set rate= round((valuation_price - item_total_purchase)/item_total_purchase*100,2), valuation_profit =  valuation_price - item_total_purchase where sell_date = '%s';"
         self.engine_simulator.execute(sql % (0))
-
-    # 언제 종목을 팔지(익절, 손절) 결정 하는 알고리즘.
-    # !@##############################################################################################################################
-    def get_sell_list(self, i):
-        logger.info("Current position: get_sell_list")
-        # 단순히 현재 보유 종목의 수익률이
-        # 익절 기준 수익률(self.sell_point) 이 넘거나,
-        # 손절 기준 수익률(self.losscut_point) 보다 떨어지면 파는 알고리즘
-        if self.sell_list_num == 1:
-            # select 할 컬럼은 항상 코드명, 수익률, 매도할 종목의 현재가, 수익(손실)금액
-            # sql 첫 번째 라인은 항상 고정
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and (rate>='%s' or rate <= '%s') group by code"
-            sell_list = self.engine_simulator.execute(sql % (0, self.sell_point, self.losscut_point)).fetchall()
-
-        # 5 / 20 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
-        elif self.sell_list_num == 2:
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and ((clo5 < clo20) or rate <= '%s') group by code"
-            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
-
-
-        # 5 / 40 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
-        elif self.sell_list_num == 3:
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and ((clo5 < clo40) or rate <= '%s') group by code"
-
-            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
-
-        ##################################################################################################################################################################################################################
-        else:
-            print(f"There is no {self.sell_list_num} for {self.simul_num}")
-            logger.info("sys.exit(1) by no matched self.sell_list_num")
-            sys.exit(1)
-
-        return sell_list
 
     # 실제로 매도를 하는 함수 (매도 한 결과를 transaction에 반영)
     def sell_send_order(self, min_date, sell_price, sell_rate, code):
