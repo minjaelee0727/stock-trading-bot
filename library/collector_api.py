@@ -560,7 +560,7 @@ class collector_api():
             """).fetchall()
 
             for row in dbl_dates:
-                logger.info(f'{code} {code_name} - daily_buy_list.`{row.tname}` 업데이트')
+                logger.info(f'{code} {code_name} - daily_buy_list.`{row.name}` 업데이트')
                 try:
                     new_data = df_temp[df_temp['date'] == row.tname]
                 except IndexError:
