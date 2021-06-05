@@ -115,7 +115,7 @@ class simulator_func_mysql:
             self.invest_min_limit_rate = 0.98
 
             self.db_to_realtime_daily_buy_list_num = 2
-            self.sell_list_num = 1
+            self.sell_list_num = 4
 
         else:
             logger.error(f"입력 하신 {self.simul_num}번 알고리즘에 대한 설정이 없습니다. simulator_func_mysql.py 파일의 variable_setting함수에 알고리즘을 설정해주세요. ")
@@ -155,6 +155,205 @@ class simulator_func_mysql:
 
             # 시뮬레이터를 멈춘 지점 부터 다시 돌리기 위해 사용하는 변수(중요X)
             self.simul_reset_lock = False
+
+        # 여기서 sql문의 date는 반드시 어제 일자여야 한다. -> 어제 일자 기준 반영된 데이터로 종목을 선정해야함.
+        ##!@####################################################################################################################################################################################
+        # 매수 할 종목의 리스트를 선정 알고리즘
+
+    def db_to_realtime_daily_buy_list(self, date_rows_today, date_rows_yesterday, i):
+
+        # 5 / 20 골든크로스 buy
+        if self.db_to_realtime_daily_buy_list_num == 1:
+            # orderby는 거래량 많은 순서
+
+            sql = "select * from `" + date_rows_yesterday + "` a where yes_clo20 > yes_clo5 and clo5 > clo20 " \
+                                                            "and NOT exists (select null from stock_konex b where a.code=b.code) " \
+                                                            "and close < '%s' group by code"
+            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
+
+        # BBands
+        elif self.db_to_realtime_daily_buy_list_num == 2:
+            realtime_daily_buy_list = []
+            ma_period = 20
+
+            if i > ma_period:
+                sql = f"""
+                       SELECT *
+                       FROM '{date_rows_yesterday}' a
+                       WHERE NOT exists (SELECT null FROM stock_konex b WHERE a.code = b.code)
+                       AND volume != 0
+                       AND close < '{self.invest_unit}'
+                       ORDER BY volume * close DESC limit 100
+                   """
+                realtime_daily_buy_list_temp = self.engine_daily_buy_list.execute(sql).fetchall()
+
+                for item in realtime_daily_buy_list_temp:
+                    code_name = item.code_name
+                    bb_sql = f"""
+                           SELECT (close + high + low)/3
+                           FROM '{code_name}'
+                           WHERE date <= '{date_rows_yesterday}'
+                           ORDER BY date DESC limit {ma_period}
+                       """
+
+                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
+
+                    if len(df_close) >= ma_period:
+                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+                        if result:
+                            mbb, ubb, lbb, perb, bw = result
+
+                            if perb < 0:
+                                realtime_daily_buy_list.append(item)
+
+            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
+
+        ######################################################################################################################################################################################
+        else:
+            print(f"There is no matcehd buying algorithm in the simul number, {self.simul_num}")
+            logger.info("sys.exit(1) by no matched simulator number")
+            sys.exit(1)
+
+        # realtime_daily_buy_list 에 종목이 하나라도 있다면, 즉 매수할 종목이 하나라도 있다면 아래 로직을 들어간다.
+        if len(realtime_daily_buy_list) > 0:
+            # realtime_daily_buy_list 라는 리스트를 df_realtime_daily_buy_list 라는 데이터프레임으로 변환하는 과정
+            # 차이점은 리스트는 컬럼에 대한 개념이 없는데, 데이터프레임은 컬럼이 있다.
+
+            df_realtime_daily_buy_list = DataFrame(realtime_daily_buy_list,
+                                                   columns=['index', 'index2', 'date', 'check_item', 'code',
+                                                            'code_name', 'd1_diff_rate', 'close', 'open', 'high',
+                                                            'low', 'volume',
+                                                            'clo5', 'clo10', 'clo20', 'clo40', 'clo60', 'clo80',
+                                                            'clo100', 'clo120',
+                                                            "clo5_diff_rate", "clo10_diff_rate", "clo20_diff_rate",
+                                                            "clo40_diff_rate", "clo60_diff_rate", "clo80_diff_rate",
+                                                            "clo100_diff_rate", "clo120_diff_rate",
+                                                            'yes_clo5', 'yes_clo10', 'yes_clo20', 'yes_clo40',
+                                                            'yes_clo60',
+                                                            'yes_clo80',
+                                                            'yes_clo100', 'yes_clo120',
+                                                            'vol5', 'vol10', 'vol20', 'vol40', 'vol60', 'vol80',
+                                                            'vol100', 'vol120'])
+
+            # lamda는 익명 함수이다. 여기서 int로 param을 보내야 6d ( 정수) 에서 안걸린다.
+            df_realtime_daily_buy_list['code'] = df_realtime_daily_buy_list['code'].apply(
+                lambda x: "{:0>6d}".format(int(x)))
+
+            if self.simulator:
+                df_realtime_daily_buy_list['check_item'] = int(0)
+                # [to_sql]
+                # df_realtime_daily_buy_list 라는 데이터프레임을
+                # simulator 데이터베이스의 realtime_daily_buy_list 테이블로 만들어주는 명령
+                #
+                # ** if_exists 옵션 **
+                # # 데이터베이스에 테이블이 존재할 때 수행 동작을 지정한다.
+                # 'fail', 'replace', 'append' 중 하나를 사용할 수 있는데 기본값은 'fail'이다.
+                # 'fail'은 데이터베이스에 테이블이 있다면 아무 동작도 수행하지 않는다.
+                # 'replace'는 테이블이 존재하면 기존 테이블을 삭제하고 새로 테이블을 생성한 후 데이터를 삽입한다.
+                # 'append'는 테이블이 존재하면 데이터만을 추가한다.
+                df_realtime_daily_buy_list.to_sql('realtime_daily_buy_list', self.engine_simulator, if_exists='replace')
+
+                # Remove the possessed stocks in realtime_daily_buy_list
+                # 현재 보유 중인 종목은 매수 리스트(realtime_daily_buy_list) 에서 제거 하는 로직
+                if self.is_simul_table_exist(self.db_name, "transaction"):
+                    sql = "delete from realtime_daily_buy_list where code in (select code from transaction where sell_date = '%s' or buy_date = '%s' or sell_date = '%s')"
+                    # delete는 리턴 값이 없기 때문에 fetchall 쓰지 않는다.
+                    self.engine_simulator.execute(sql % (0, date_rows_today, date_rows_today))
+
+                if self.use_ai:
+                    from ai_filter import ai_filter
+                    ai_filter(self.ai_filter_num, engine=self.engine_simulator, until=date_rows_yesterday)
+
+                # 최종적으로 realtime_daily_buy_list 테이블에 저장 된 종목들을 가져온다.
+                self.get_realtime_daily_buy_list()
+
+            # 모의, 실전 투자 봇 의 경우
+            else:
+                # check_item 컬럼에 0 으로 setting
+                df_realtime_daily_buy_list['check_item'] = int(0)
+                df_realtime_daily_buy_list.to_sql('realtime_daily_buy_list', self.engine_simulator, if_exists='replace')
+
+                # 현재 보유 중인 종목들은 삭제
+                sql = "delete from realtime_daily_buy_list where code in (select code from possessed_item)"
+                self.engine_simulator.execute(sql)
+
+
+        # 매수할 종목이 없으면, df_realtime_daily_buy_list라는 데이터프레임의 길이를 저장하는
+        # len_df_realtime_daily_buy_list에 다가 0을 넣는다.
+        else:
+            self.len_df_realtime_daily_buy_list = 0
+
+        # 언제 종목을 팔지(익절, 손절) 결정 하는 알고리즘.
+        # !@##############################################################################################################################
+
+    def get_sell_list(self, i):
+        logger.info("Current position: get_sell_list")
+        # 단순히 현재 보유 종목의 수익률이
+        # 익절 기준 수익률(self.sell_point) 이 넘거나,
+        # 손절 기준 수익률(self.losscut_point) 보다 떨어지면 파는 알고리즘
+        if self.sell_list_num == 1:
+            # select 할 컬럼은 항상 코드명, 수익률, 매도할 종목의 현재가, 수익(손실)금액
+            # sql 첫 번째 라인은 항상 고정
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and (rate>='%s' or rate <= '%s') group by code"
+            sell_list = self.engine_simulator.execute(sql % (0, self.sell_point, self.losscut_point)).fetchall()
+
+        # 5 / 20 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
+        elif self.sell_list_num == 2:
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and ((clo5 < clo20) or rate <= '%s') group by code"
+            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
+
+
+        # 5 / 40 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
+        elif self.sell_list_num == 3:
+            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
+                  "and ((clo5 < clo40) or rate <= '%s') group by code"
+
+            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
+
+        elif self.sell_list_num == 4:
+            sell_list = []
+            ma_period = 20
+
+            if i > ma_period:
+                sql = """
+                       SELECT code, rate, present_price, valuation_profit, code_name
+                       FROM transaction 
+                       WHERE (sell_date = '0')
+                       group by code
+                   """
+
+                sell_list_temp = self.engine_simulator.execute(sql).fetchall()
+
+                for item in sell_list_temp:
+                    code_name = item.code_name
+                    date_rows_yesterday = self.date_rows[i - 1][0]
+
+                    bb_sql = f"""
+                           SELECT close
+                           FROM '{code_name}'
+                           WHERE date <= '{date_rows_yesterday}'
+                           ORDER By date DESC limit {ma_period}
+                       """
+                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
+
+                    if len(df_close) >= ma_period:
+                        result = BBands(pd.DataFrame(df_close), w=ma_period)
+
+                        if result:
+                            mbb, ubb, lbb, perb, bw = result
+
+                            if perb > 1:
+                                sell_list.append(item)
+
+        ##################################################################################################################################################################################################################
+        else:
+            print(f"There is no {self.sell_list_num} for {self.simul_num}")
+            logger.info("sys.exit(1) by no matched self.sell_list_num")
+            sys.exit(1)
+
+        return sell_list
 
     # Set db and table
     def table_setting(self):
@@ -467,204 +666,6 @@ class simulator_func_mysql:
             print("There is no matched algorithm number (self.trade_check_num = {}) in trade_check".format(self.trade_check_num))
             logger.info("exit(1) by no matched number with self.trade_check_num, {}".format(self.trade_check_num))
             exit(1)
-
-    # 여기서 sql문의 date는 반드시 어제 일자여야 한다. -> 어제 일자 기준 반영된 데이터로 종목을 선정해야함.
-    ##!@####################################################################################################################################################################################
-    # 매수 할 종목의 리스트를 선정 알고리즘
-    def db_to_realtime_daily_buy_list(self, date_rows_today, date_rows_yesterday, i):
-
-        # 5 / 20 골든크로스 buy
-        if self.db_to_realtime_daily_buy_list_num == 1:
-            # orderby는 거래량 많은 순서
-
-            sql = "select * from `" + date_rows_yesterday + "` a where yes_clo20 > yes_clo5 and clo5 > clo20 " \
-                                                            "and NOT exists (select null from stock_konex b where a.code=b.code) " \
-                                                            "and close < '%s' group by code"
-            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
-
-        #BBands
-        elif self.db_to_realtime_daily_buy_list_num == 2:
-            realtime_daily_buy_list = []
-            ma_period = 20
-
-            if i > ma_period:
-                sql = f"""
-                    SELECT *
-                    FROM '{date_rows_yesterday}' a
-                    WHERE NOT exists (SELECT null FROM stock_konex b WHERE a.code = b.code)
-                    AND volume != 0
-                    AND close < '{self.invest_unit}'
-                    ORDER BY volume * close DESC limit 100
-                """
-                realtime_daily_buy_list_temp = self.engine_daily_buy_list.execute(sql).fetchall()
-
-                for item in realtime_daily_buy_list_temp:
-                    code_name = item.code_name
-                    bb_sql = f"""
-                        SELECT (close + high + low)/3
-                        FROM '{code_name}'
-                        WHERE date <= '{date_rows_yesterday}'
-                        ORDER BY date DESC limit {ma_period}
-                    """
-
-                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
-
-                    if len(df_close) >= ma_period:
-                        result = BBands(pd.DataFrame(df_close), w=ma_period)
-                        if result:
-                            mbb, ubb, lbb, perb, bw = result
-
-                            if perb < 0:
-                                realtime_daily_buy_list.append(item)
-
-
-            realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
-
-        ######################################################################################################################################################################################
-        else:
-            print(f"There is no matcehd buying algorithm in the simul number, {self.simul_num}")
-            logger.info("sys.exit(1) by no matched simulator number")
-            sys.exit(1)
-
-        # realtime_daily_buy_list 에 종목이 하나라도 있다면, 즉 매수할 종목이 하나라도 있다면 아래 로직을 들어간다.
-        if len(realtime_daily_buy_list) > 0:
-            # realtime_daily_buy_list 라는 리스트를 df_realtime_daily_buy_list 라는 데이터프레임으로 변환하는 과정
-            # 차이점은 리스트는 컬럼에 대한 개념이 없는데, 데이터프레임은 컬럼이 있다.
-
-            df_realtime_daily_buy_list = DataFrame(realtime_daily_buy_list,
-                                                   columns=['index', 'index2', 'date', 'check_item', 'code',
-                                                            'code_name', 'd1_diff_rate', 'close', 'open', 'high',
-                                                            'low', 'volume',
-                                                            'clo5', 'clo10', 'clo20', 'clo40', 'clo60', 'clo80',
-                                                            'clo100', 'clo120',
-                                                            "clo5_diff_rate", "clo10_diff_rate", "clo20_diff_rate",
-                                                            "clo40_diff_rate", "clo60_diff_rate", "clo80_diff_rate",
-                                                            "clo100_diff_rate", "clo120_diff_rate",
-                                                            'yes_clo5', 'yes_clo10', 'yes_clo20', 'yes_clo40',
-                                                            'yes_clo60',
-                                                            'yes_clo80',
-                                                            'yes_clo100', 'yes_clo120',
-                                                            'vol5', 'vol10', 'vol20', 'vol40', 'vol60', 'vol80',
-                                                            'vol100', 'vol120'])
-
-            # lamda는 익명 함수이다. 여기서 int로 param을 보내야 6d ( 정수) 에서 안걸린다.
-            df_realtime_daily_buy_list['code'] = df_realtime_daily_buy_list['code'].apply(
-                lambda x: "{:0>6d}".format(int(x)))
-
-            if self.simulator:
-                df_realtime_daily_buy_list['check_item'] = int(0)
-                # [to_sql]
-                # df_realtime_daily_buy_list 라는 데이터프레임을
-                # simulator 데이터베이스의 realtime_daily_buy_list 테이블로 만들어주는 명령
-                #
-                # ** if_exists 옵션 **
-                # # 데이터베이스에 테이블이 존재할 때 수행 동작을 지정한다.
-                # 'fail', 'replace', 'append' 중 하나를 사용할 수 있는데 기본값은 'fail'이다.
-                # 'fail'은 데이터베이스에 테이블이 있다면 아무 동작도 수행하지 않는다.
-                # 'replace'는 테이블이 존재하면 기존 테이블을 삭제하고 새로 테이블을 생성한 후 데이터를 삽입한다.
-                # 'append'는 테이블이 존재하면 데이터만을 추가한다.
-                df_realtime_daily_buy_list.to_sql('realtime_daily_buy_list', self.engine_simulator, if_exists='replace')
-
-                # Remove the possessed stocks in realtime_daily_buy_list
-                # 현재 보유 중인 종목은 매수 리스트(realtime_daily_buy_list) 에서 제거 하는 로직
-                if self.is_simul_table_exist(self.db_name, "transaction"):
-                    sql = "delete from realtime_daily_buy_list where code in (select code from transaction where sell_date = '%s' or buy_date = '%s' or sell_date = '%s')"
-                    # delete는 리턴 값이 없기 때문에 fetchall 쓰지 않는다.
-                    self.engine_simulator.execute(sql % (0, date_rows_today, date_rows_today))
-
-                if self.use_ai:
-                    from ai_filter import ai_filter
-                    ai_filter(self.ai_filter_num, engine=self.engine_simulator, until=date_rows_yesterday)
-
-                # 최종적으로 realtime_daily_buy_list 테이블에 저장 된 종목들을 가져온다.
-                self.get_realtime_daily_buy_list()
-
-            # 모의, 실전 투자 봇 의 경우
-            else:
-                # check_item 컬럼에 0 으로 setting
-                df_realtime_daily_buy_list['check_item'] = int(0)
-                df_realtime_daily_buy_list.to_sql('realtime_daily_buy_list', self.engine_simulator, if_exists='replace')
-
-                # 현재 보유 중인 종목들은 삭제
-                sql = "delete from realtime_daily_buy_list where code in (select code from possessed_item)"
-                self.engine_simulator.execute(sql)
-
-
-        # 매수할 종목이 없으면, df_realtime_daily_buy_list라는 데이터프레임의 길이를 저장하는
-        # len_df_realtime_daily_buy_list에 다가 0을 넣는다.
-        else:
-            self.len_df_realtime_daily_buy_list = 0
-
-    # 언제 종목을 팔지(익절, 손절) 결정 하는 알고리즘.
-    # !@##############################################################################################################################
-    def get_sell_list(self, i):
-        logger.info("Current position: get_sell_list")
-        # 단순히 현재 보유 종목의 수익률이
-        # 익절 기준 수익률(self.sell_point) 이 넘거나,
-        # 손절 기준 수익률(self.losscut_point) 보다 떨어지면 파는 알고리즘
-        if self.sell_list_num == 1:
-            # select 할 컬럼은 항상 코드명, 수익률, 매도할 종목의 현재가, 수익(손실)금액
-            # sql 첫 번째 라인은 항상 고정
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and (rate>='%s' or rate <= '%s') group by code"
-            sell_list = self.engine_simulator.execute(sql % (0, self.sell_point, self.losscut_point)).fetchall()
-
-        # 5 / 20 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
-        elif self.sell_list_num == 2:
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and ((clo5 < clo20) or rate <= '%s') group by code"
-            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
-
-
-        # 5 / 40 이동 평균선 데드크로스 이거나, losscut_point(손절 기준 수익률) 이하로 떨어지면 손절하는 알고리즘
-        elif self.sell_list_num == 3:
-            sql = "SELECT code, rate, present_price,valuation_profit FROM transaction WHERE (sell_date = '%s') " \
-                  "and ((clo5 < clo40) or rate <= '%s') group by code"
-
-            sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
-
-        elif self.sell_list_num == 4:
-            sell_list = []
-            ma_period = 20
-
-            if i > ma_period:
-                sql = """
-                    SELECT code, rate, present_price, valuation_profit, code_name
-                    FROM transaction 
-                    WHERE (sell_date = '0')
-                    group by code
-                """
-
-                sell_list_temp = self.engine_simulator.execute(sql).fetchall()
-
-                for item in sell_list_temp:
-                    code_name = item.code_name
-                    date_rows_yesterday = self.date_rows[i - 1][0]
-
-                    bb_sql = f"""
-                        SELECT close
-                        FROM '{code_name}'
-                        WHERE date <= '{date_rows_yesterday}'
-                        ORDER By date DESC limit {ma_period}
-                    """
-                    df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
-
-                    if len(df_close) >= ma_period:
-                        result = BBands(pd.DataFrame(df_close), w=ma_period)
-
-                        if result:
-                            mbb, ubb, lbb, perb, bw = result
-
-                            if perb > 1:
-                                sell_list.append(item)
-
-        ##################################################################################################################################################################################################################
-        else:
-            print(f"There is no {self.sell_list_num} for {self.simul_num}")
-            logger.info("sys.exit(1) by no matched self.sell_list_num")
-            sys.exit(1)
-
-        return sell_list
 
     # 현재의 주가를 transaction에 있는 보유한 종목들에 대해서 반영 한다.
     def db_to_all_item_present_price_update(self, code_name, d1_diff_rate, close, open, high, low, volume, clo5, clo10, clo20,
