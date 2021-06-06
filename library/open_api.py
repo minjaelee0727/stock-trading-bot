@@ -71,7 +71,7 @@ class open_api(QAxWidget):
         self.variable_setting()
 
         # open_api가 호출 되는 경우 (콜렉터, 모의투자, 실전투자) 의 경우는
-        # 아래 simulator_func_mysql 클래스를 호출 할 때 두번째 인자에 real을 보낸다.
+        # 아래 simulator_func_mysql 클래스를 호출 할 때 simulation -> False
         self.sf = simulator_func_mysql(self.simul_num, False, False, self.db_name)
         logger.info("self.sf.simul_num: %s", self.sf.simul_num)
         logger.info("self.sf.db_to_realtime_daily_buy_list_num : %s", self.sf.db_to_realtime_daily_buy_list_num)

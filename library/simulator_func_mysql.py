@@ -21,7 +21,7 @@ from pandas import DataFrame
 import library.trading_algorithms as ta
 
 class simulator_func_mysql:
-    def __init__(self, simul_num, reset, simulation, db_name):
+    def __init__(self, simul_num: int, reset: bool, simulation: bool, db_name):
 
         self.simul_num = int(simul_num)
 
@@ -69,7 +69,7 @@ class simulator_func_mysql:
             self.engine_simulator.execute(sql)
 
     # realtime_daily_buy_list 테이블의 check_item컬럼에 특정 종목의 매수 시간을 넣는 함수
-    def update_realtime_daily_buy_list(self, code, min_date):
+    def update_realtime_daily_buy_list(self, code: str, min_date: str):
         sql = "update realtime_daily_buy_list set check_item = '%s' where code = '%s'"
         self.engine_simulator.execute(sql % (min_date, code))
 
@@ -101,16 +101,16 @@ class simulator_func_mysql:
         # 실시간 조건 매수 알고리즘 선택 (1,2,3..)
         self.trade_check_num = False
 
-        print("self.simul_num!!! ", self.simul_num)
+        print("self.simul_num: ", self.simul_num)
 
         ###!@####################################################################################################################
         # 아래 부터는 알고리즘 별로 별도의 설정을 해주는 부분
         if self.simul_num == 1:
+            self.use_min = True
             self.simul_start_date = "20190101"
-            self.start_invest_price = 10000000
-            self.invest_unit = 1000000
-            self.limit_money = 3000000
-            self.sell_point = 10
+            self.start_invest_price = 100000000
+            # self.invest_unit = 1000000
+            # self.limit_money = 3000000
             self.losscut_point = -2
             self.invest_limit_rate = 1.01
             self.invest_min_limit_rate = 0.98
@@ -161,7 +161,7 @@ class simulator_func_mysql:
         ##!@####################################################################################################################################################################################
         # 매수 할 종목의 리스트를 선정 알고리즘
 
-    def db_to_realtime_daily_buy_list(self, date_rows_today, date_rows_yesterday, i):
+    def db_to_realtime_daily_buy_list(self, date_rows_today: str, date_rows_yesterday: str, passed_dates):
 
         # 5 / 20 골든크로스 buy
         if self.db_to_realtime_daily_buy_list_num == 1:
@@ -172,12 +172,14 @@ class simulator_func_mysql:
                                                             "and close < '%s' group by code"
             realtime_daily_buy_list = self.engine_daily_buy_list.execute(sql % (self.invest_unit)).fetchall()
 
-        # BBands
+        # BBands & MACD
         elif self.db_to_realtime_daily_buy_list_num == 2:
             realtime_daily_buy_list = []
+            long_ema_period = 26
+            short_ema_period = 12
             ma_period = 20
 
-            if i > ma_period:
+            if passed_dates > long_ema_period:
                 sql = f"""
                        SELECT *
                        FROM `{date_rows_yesterday}` a
@@ -190,6 +192,7 @@ class simulator_func_mysql:
 
                 for item in realtime_daily_buy_list_temp:
                     code_name = item.code_name
+
                     bb_sql = f"""
                            SELECT (close + high + low)/3
                            FROM `{code_name}`
@@ -201,11 +204,24 @@ class simulator_func_mysql:
 
                     if len(df_close) >= ma_period:
                         result = ta.BBands(pd.DataFrame(df_close), w=ma_period)
+
                         if result:
                             mbb, ubb, lbb, perb, bw = result
 
                             if perb < 0:
-                                realtime_daily_buy_list.append(item)
+
+                                # MACD
+                                macd_sql = f"""
+                                    SELECT close
+                                    FROM `{code_name}` 
+                                    WHERE date <= '{date_rows_yesterday}'
+                                    ORDER BY date DESC limit {long_ema_period}
+                                """
+
+                                df_close = self.engine_daily_craw.execute(macd_sql).fetchall()
+
+                                if ta.macd_with_bbands(df_close, fast_ema_period=long_ema_period, slow_ema_period=short_ema_period):
+                                    realtime_daily_buy_list.append(item)
 
         ######################################################################################################################################################################################
         else:
@@ -311,6 +327,7 @@ class simulator_func_mysql:
 
             sell_list = self.engine_simulator.execute(sql % (0, self.losscut_point)).fetchall()
 
+        # MACD reach middle
         elif self.sell_list_num == 4:
             sell_list = []
             ma_period = 20
@@ -343,8 +360,11 @@ class simulator_func_mysql:
                         if result:
                             mbb, ubb, lbb, perb, bw = result
 
-                            if perb > 1:
+                            if perb >= 0.4:
                                 sell_list.append(item)
+
+                    if item.rate <= self.losscut_point:
+                        sell_list.append(item)
 
         ##################################################################################################################################################################################################################
         else:
