@@ -106,11 +106,10 @@ class simulator_func_mysql:
         ###!@####################################################################################################################
         # 아래 부터는 알고리즘 별로 별도의 설정을 해주는 부분
         if self.simul_num == 1:
-            self.use_min = True
             self.simul_start_date = "20190101"
             self.start_invest_price = 100000000
-            # self.invest_unit = 1000000
-            # self.limit_money = 3000000
+            self.invest_unit = 50000000
+            self.limit_money = 0
             self.losscut_point = -2
             self.invest_limit_rate = 1.01
             self.invest_min_limit_rate = 0.98
@@ -220,7 +219,7 @@ class simulator_func_mysql:
 
                                 df_close = self.engine_daily_craw.execute(macd_sql).fetchall()
 
-                                if ta.macd_with_bbands(df_close, fast_ema_period=long_ema_period, slow_ema_period=short_ema_period):
+                                if ta.macd_with_bbands(pd.DataFrame(df_close), fast_ema_period=long_ema_period, slow_ema_period=short_ema_period):
                                     realtime_daily_buy_list.append(item)
 
         ######################################################################################################################################################################################
