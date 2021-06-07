@@ -106,6 +106,10 @@ class simulator_func_mysql:
         ###!@####################################################################################################################
         # 아래 부터는 알고리즘 별로 별도의 설정을 해주는 부분
         if self.simul_num == 1:
+            #self.use_min = True
+            #self.simul_start_date = "20200101"
+            self.only_buy_at_open = False
+            self.only_buy_at_close = True
             self.simul_start_date = "20190101"
             self.start_invest_price = 100000000
             self.invest_unit = 50000000
@@ -114,8 +118,12 @@ class simulator_func_mysql:
             self.invest_limit_rate = 1.01
             self.invest_min_limit_rate = 0.98
 
+            self.sell_point = 500
             self.db_to_realtime_daily_buy_list_num = 2
             self.sell_list_num = 4
+
+            self.use_ai = True
+            self.ai_filter_num = 2
 
         else:
             logger.error(f"입력 하신 {self.simul_num}번 알고리즘에 대한 설정이 없습니다. simulator_func_mysql.py 파일의 variable_setting함수에 알고리즘을 설정해주세요. ")
@@ -207,18 +215,17 @@ class simulator_func_mysql:
                         if result:
                             mbb, ubb, lbb, perb, bw = result
 
-                            if perb < 0:
-
+                            if perb <= 0:
                                 # MACD
                                 macd_sql = f"""
                                     SELECT close
                                     FROM `{code_name}` 
                                     WHERE date <= '{date_rows_yesterday}'
-                                    ORDER BY date DESC limit {long_ema_period}
+                                    ORDER BY date DESC limit {long_ema_period} 
                                 """
 
                                 df_close = self.engine_daily_craw.execute(macd_sql).fetchall()
-
+                                # AS DESC, recent -> old
                                 if ta.macd_with_bbands(pd.DataFrame(df_close), fast_ema_period=long_ema_period, slow_ema_period=short_ema_period):
                                     realtime_daily_buy_list.append(item)
 
@@ -342,28 +349,53 @@ class simulator_func_mysql:
                 sell_list_temp = self.engine_simulator.execute(sql).fetchall()
 
                 for item in sell_list_temp:
+
+                    if item.rate <= self.losscut_point:
+                        sell_list.append(item)
+                        continue
+
+                    long_ema_period = 26
+
                     code_name = item.code_name
                     date_rows_yesterday = self.date_rows[i - 1][0]
+
+                    #bb_sql = f"""
+                    ##       SELECT clo10
+                    #       FROM `{code_name}`
+                    #       WHERE date <= '{date_rows_yesterday}'
+                   #        ORDER By date DESC limit 1
+                    #   """
+
+                    #df_clo10 = self.engine_daily_craw.execute(bb_sql).fetchall()
 
                     bb_sql = f"""
                            SELECT close
                            FROM `{code_name}`
                            WHERE date <= '{date_rows_yesterday}'
-                           ORDER By date DESC limit {ma_period}
+                           ORDER By date DESC limit {long_ema_period}
                        """
+
                     df_close = self.engine_daily_craw.execute(bb_sql).fetchall()
 
+                    #if df_close[0] >= df_clo10[0]:
+                    #    sell_list.append(item)
+                    #    continue
+
                     if len(df_close) >= ma_period:
-                        result = ta.BBands(pd.DataFrame(df_close), w=ma_period)
+                        result = ta.BBands(pd.DataFrame(df_close)[:long_ema_period], w=ma_period)
 
                         if result:
                             mbb, ubb, lbb, perb, bw = result
 
-                            if perb >= 0.4:
+                            if perb >= 0.5:
                                 sell_list.append(item)
+                                continue
 
-                    if item.rate <= self.losscut_point:
-                        sell_list.append(item)
+                    #if len(df_close) >= long_ema_period:
+                    #    # AS DESC, recent -> old
+                    #    if ta.macd_with_bbands(pd.DataFrame(df_close), buy=False):
+                    #        sell_list.append(item)
+                    #        continue
 
         ##################################################################################################################################################################################################################
         else:
@@ -532,7 +564,13 @@ class simulator_func_mysql:
                 # 분별 시뮬레이션이 아닌 일별 시뮬레이션의 경우
                 if not self.use_min:
                     # 매수 당일 시작가를 가져온다.
-                    price = self.get_now_open_price_by_date(code, date_rows_today)
+                    if self.only_buy_at_open:
+                        price = self.get_now_open_price_by_date(code, date_rows_today)
+                    elif self.only_buy_at_close:
+                        price = self.get_now_close_price_by_date(code, date_rows_today)
+                    else:
+                        logger.critical("You did not set only_buy_at_{open, close}")
+                        sys.exit(1)
                 # 분별 시뮬레이션의 경우
                 else:
                     # 매수 시점의 가격을 가져온다.
@@ -706,7 +744,7 @@ class simulator_func_mysql:
 
         self.engine_simulator.execute(sql)
 
-    # balance 라는 테이블을 만들기 위한 self.jango 데이터프레임을 생성
+    # balance 라는 테이블을 만들기 위한 self.balance 데이터프레임을 생성
     def init_df_balance(self):
         balance_temp = {'id': []}
 
@@ -912,7 +950,6 @@ class simulator_func_mysql:
     # daily_buy_list에 일자 테이블이 존재하는지 확인하는 함수
     def is_date_exist(self, date):
         logger.info("Current position: is_date_exist")
-        logger.info("parameter value: ", date)
         sql = "select 1 from information_schema.tables where table_schema ='daily_buy_list' and table_name = '%s'"
         rows = self.engine_daily_buy_list.execute(sql % (date)).fetchall()
         if len(rows) == 1:
@@ -930,7 +967,7 @@ class simulator_func_mysql:
 
     # 출력 함수
     def print_info(self, min_date):
-        print("self.simul_num :" + str(self.simul_num))
+        print("self.simul_num: " + str(self.simul_num))
         # transaction 테이블이 생성 되어 있으면 보유한 종목 수를 출력
         if self.is_simul_table_exist(self.db_name, "transaction"):
             print("Simulation Time: " + str(min_date))
@@ -946,6 +983,16 @@ class simulator_func_mysql:
             print("daily_buy_list db의 " + str(date) + " 테이블에 " + str(code) + " 가 존재하지 않는다!")
             return False
         # 테이블의 존재 여부를 파악하는 함수
+
+    def get_close_price_by_date(self, code, date):
+        sql = f"select close from `{date}` where code = {code} group by code"
+        close = self.engine_daily_buy_list.execute(sql).fetchall()
+        if len(close) == 1:
+            return close[0][0]
+        else:
+            print(f"There is no {str(code)} in {str(date)} table in daily_buy_list db")
+            return False
+
 
     # daily_craw 데이터 베이스에서 특정 종목이 존재하는 여부를 파악하는 함수
     def is_daily_craw_table_exist(self, code_name):

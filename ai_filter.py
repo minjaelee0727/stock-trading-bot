@@ -154,6 +154,68 @@ def ai_filter(ai_filter_num, engine, until=datetime.datetime.today()):
                 print(f"기준에 부합하지 않으므로 realtime_daily_buy_list 에서 제외")
                 filtered_list.append(code_name)
 
+    if ai_filter_num == 2:
+        ai_settings = {
+            "n_steps": 100,  # 시퀀스 데이터를 몇개씩 담을지 설정
+            "lookup_step": 1,  # 단위 :(일/분) 몇 일(분) 뒤의 종가를 예측 할 것 인지 설정 : daily_craw -> 일 / min_craw -> 분
+            "test_size": 0.2,
+            # train 범위 : test_size 가 0.2 이면 X_train, y_train에 80% 데이터로 트레이닝 하고 X_test,y_test에 나머지 20%로 테스트를 하겠다는 의미
+            "n_layers": 4,  # LSTM layer 개수
+            "units": 50,  # LSTM neurons 개수
+            "dropout": 0.2,  # overfitting 방지를 위해 몇개의 노드를 죽이고 남은 노드들을 통해서만 훈련을 하는 것(0.2 -> 20%를 죽인다)
+            "loss": "mae",  # loss : 최적화 과정에서 최소화될 손실 함수(loss function)를 설정 # mae : mean absolute error (평균 절대 오차)
+            "optimizer": "adam",  # optimizer : 최적화 알고리즘 선택
+            "batch_size": 64,  # 각 학습 반복에 사용할 데이터 샘플 수
+            "epochs": 100,  # 몇 번 테스트 할지
+            "ratio_cut": -1,  # 단위:(%) lookup_step 기간 뒤 ratio_cut(%) 만큼 증가 할 것이 예측 된다면 매수
+            "table": "daily_craw",
+            # 분석 시 daily_craw(일별데이터)를 이용 할지 min_craw(분별데이터)를 이용 할지 선택. ** 주의: min_craw 선택 시 최근 1년 데이터만 있기 때문에 simulator_func_mysql.py에서 self.simul_start_date를 최근 1년 전으로 설정 필요
+            "is_used_predicted_close": True  # ratio(예상 상승률) 계산 시 예측 그래프의 close 값을 이용 할 경우 True, 실제 close 값을 이용할 시 False
+        }
+        tr_engine = create_training_engine(ai_settings['table'])
+
+        try:
+            buy_list = engine.execute("""
+                SELECT DISTINCT code_name FROM realtime_daily_buy_list
+            """).fetchall()
+        except (InternalError, ProgrammingError) as err:
+            if 'Table' in str(err):
+                print(f"{err} \n realtime_daily_buy_list 테이블이 존재 하지 않습니다. \n 콜렉터를 실행해주세요 ")
+            else:
+                print(f"{err} \n jackbot 데이터베이스가 존재 하지 않습니다. \n 콜렉터를 실행해주세요 ")
+            exit(1)
+
+        feature_columns = ["close", "volume", "open", "high", "low"]
+        filtered_list = []
+        for code_name, in buy_list:
+            print(f"{code_name} 종목 분석 중....")
+
+            sql = """
+                SELECT {} FROM `{}`
+                WHERE STR_TO_DATE(date, '%Y%m%d%H%i') <= '{}'
+            """.format(','.join(feature_columns), code_name, until)
+            # pandas(pd) read_sql 을 사용하면 sql, engine을 넘겼을 때 return 값을 바로 데이터프레임으로 받을 수 있음
+            df = pd.read_sql(sql, tr_engine)
+
+            # 데이터가 1000개(1000일 or 1000분)가 넘지 않으면 예측도가 떨어지기 때문에 필터링
+            if len(df) < 1000:
+                filtered_list.append(code_name)
+                print(f"테스트 데이터가 적어서 realtime_daily_buy_list 에서 제외")
+                continue
+            try:
+                filtered = filtered_by_basic_lstm(df, ai_settings)
+            except (DataNotEnough, ValueError):
+                print(f"테스트 데이터가 적어서 realtime_daily_buy_list 에서 제외")
+                filtered_list.append(code_name)
+                continue
+
+            print(code_name)
+
+            # filtered가 True 이면 filtered_list(필터링 종목)에 해당 종목을 append
+            if filtered:
+                print(f"기준에 부합하지 않으므로 realtime_daily_buy_list 에서 제외")
+                filtered_list.append(code_name)
+
     # filtered_list에 있는 종목들을 realtime_daily_buy_list(매수리스트)에서 제거
     # 모든 조건문에서 filtered_list를 생성해줘야 함
     if len(filtered_list) > 0:

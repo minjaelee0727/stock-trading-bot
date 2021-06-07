@@ -34,13 +34,19 @@ def BBands(df_close, w=20, k=2):
         return False
 
 
-def macd_with_bbands(df_close, fast_ema_period=12, slow_ema_period=26, signal_period=9):
-    emaFast = df_close.ewm(span=fast_ema_period, min_periods=fast_ema_period - 1).mean()
-    emaSlow = df_close.ewm(span=slow_ema_period, min_periods=slow_ema_period - 1).mean()
+def macd_with_bbands(df_close: pd.DataFrame, fast_ema_period=12, slow_ema_period=26, signal_period=9, buy=True) -> bool:
+    emaFast = df_close.ewm(span=fast_ema_period).mean()
+    emaSlow = df_close.ewm(span=slow_ema_period).mean()
     macd = emaFast - emaSlow
 
-    if macd[0][2] - macd[0][1] > 0 and macd[0][0] - macd[0][1] > 0:
-        return True
+    if macd[0][1] - macd[0][2] > 0:
+        if buy:
+            return True
+        else:
+            return False
     else:
-        return False
+        if buy:
+            return False
+        else:
+            return True
 
