@@ -125,6 +125,20 @@ class simulator_func_mysql:
             self.use_ai = True
             self.ai_filter_num = 2
 
+        elif self.simul_num == 2:
+            self.only_buy_at_open = False
+            self.only_buy_at_close = True
+            self.simul_start_date = "20190101"
+            self.start_invest_price = 100000000
+            self.invest_unit = 10000000
+            self.limit_money = 0
+            self.losscut_point = -2
+            self.invest_limit_rate = 1.01
+            self.invest_min_limit_rate = 0.98
+
+            self.sell_point = 500
+            self.db_to_realtime_daily_buy_list_num = 2
+            self.sell_list_num = 4
         else:
             logger.error(f"입력 하신 {self.simul_num}번 알고리즘에 대한 설정이 없습니다. simulator_func_mysql.py 파일의 variable_setting함수에 알고리즘을 설정해주세요. ")
             sys.exit(1)
@@ -391,11 +405,11 @@ class simulator_func_mysql:
                                 sell_list.append(item)
                                 continue
 
-                    #if len(df_close) >= long_ema_period:
-                    #    # AS DESC, recent -> old
-                    #    if ta.macd_with_bbands(pd.DataFrame(df_close), buy=False):
-                    #        sell_list.append(item)
-                    #        continue
+                    if len(df_close) >= long_ema_period:
+                       # AS DESC, recent -> old
+                       if ta.macd_with_bbands(pd.DataFrame(df_close), buy=False):
+                           sell_list.append(item)
+                           continue
 
         ##################################################################################################################################################################################################################
         else:
